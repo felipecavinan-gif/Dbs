@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@500;700&display=swap">
 <script src="jspdf.umd.min.js"></script>
 <style>
-/* Layout: uma coluna estreita; um bloco por lado do salão, cada ponto com Mín / Máx / Média; registros salvos embaixo */
+/* Layout: uma coluna estreita; um bloco por lado do salão, autosave com reserva; registros embaixo */
 *{box-sizing:border-box}
 html{color-scheme:light}
 body{margin:0}
@@ -84,19 +84,26 @@ tr.sep td{border-top:1px solid var(--line)}
 .lock{font-size:.82rem;color:var(--muted)}
 .export{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end}
 .export div{display:flex;flex-direction:column;gap:4px;min-width:0}
+.status{display:flex;align-items:center;gap:8px;font-size:.88rem;color:var(--muted);background:var(--bg);border-radius:10px;padding:8px 12px}
+.status i{width:9px;height:9px;border-radius:50%;background:var(--line);flex:none}
+.status.ok i{background:var(--accent)} .status.busy i{background:var(--muted)} .status.warn i{background:var(--err)}
+.status.warn{color:var(--err)}
+@media (prefers-reduced-motion:no-preference){.status.busy i{animation:pulse 1s infinite alternate}}
+@keyframes pulse{to{opacity:.3}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
     <h1>Decibéis do Salão</h1>
-    <p>Em cada ponto, anote a mínima e a máxima: 3 pontos no lado esquerdo, 3 no lado direito e 1 no meio, ao fundo. O app calcula a média de cada ponto, a média de cada lado e a média geral. Pode deixar campos em branco. Depois de salvo, o registro não pode ser alterado.</p>
+    <p>Em cada ponto, anote a mínima e a máxima: 3 pontos no lado esquerdo, 3 no lado direito e 1 no meio, ao fundo. Tudo é salvo sozinho enquanto você digita, com uma cópia de reserva. Quando os 14 campos estiverem preenchidos e você parar de digitar por 1 minuto, a medição é concluída e o formulário fica livre para a próxima.</p>
   </header>
 
   <form class="card" id="form" novalidate>
+    <div class="status" id="status"><i></i><span id="stxt">Comece a digitar para iniciar uma medição.</span></div>
     <div class="when">
-      <div><label class="lbl" for="dt">Data</label><input type="date" id="dt" required></div>
-      <div><label class="lbl" for="hr">Hora</label><input type="time" id="hr" required></div>
+      <div><label class="lbl" for="dt">Data</label><input type="date" id="dt"></div>
+      <div><label class="lbl" for="hr">Hora</label><input type="time" id="hr"></div>
     </div>
     <div id="groups"></div>
     <div>
@@ -108,23 +115,12 @@ tr.sep td{border-top:1px solid var(--line)}
         <div class="geral"><span>Geral</span><b id="s_ger">—</b></div>
       </div>
     </div>
-
-    <button class="btn primary" type="submit" id="save">Salvar medições</button>
-    <div class="confirm" id="confirm" hidden>
-      <p><strong>Confira antes de salvar</strong></p>
-      <div id="preview"></div>
-      <p class="lock">Depois de salvo não dá para editar nem apagar.</p>
-      <div class="row">
-        <button class="btn ghost" type="button" id="back">Corrigir</button>
-        <button class="btn primary" type="button" id="ok">Confirmar e salvar</button>
-      </div>
-    </div>
     <p class="msg" id="msg" role="status"></p>
   </form>
 
   <section class="card">
     <div class="listhead">
-      <h2>Registros salvos</h2>
+      <h2>Registros</h2>
       <span class="lock" id="count"></span>
     </div>
     <div id="list"><p class="empty">Carregando registros…</p></div>
@@ -142,34 +138,32 @@ tr.sep td{border-top:1px solid var(--line)}
 (function(){
   const $ = id => document.getElementById(id);
   const MESES = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
-  const KEY = "decibeis-salao:v2";
+  const KEY = "decibeis-salao:v2";             // registros (principal, versão do GitHub)
+  const KEY_RESERVA = "decibeis-salao:reserva"; // cópia de reserva completa
+  const KEY_ATUAL = "decibeis-salao:atual";     // medição em andamento neste aparelho
   const INSIDE_CLAUDE = !!(window.claude && window.claude.use);
-  // os 7 pontos de medição, na ordem em que aparecem no app e no PDF
+  const FECHA_COMPLETO_MS = 60*1000, FECHA_PARADO_MS = 30*60*1000;
   const PONTOS = [
     {id:"e1",lado:"Lado esquerdo",nome:"1ª"},{id:"e2",lado:"Lado esquerdo",nome:"2ª"},{id:"e3",lado:"Lado esquerdo",nome:"3ª"},
     {id:"d1",lado:"Lado direito",nome:"1ª"},{id:"d2",lado:"Lado direito",nome:"2ª"},{id:"d3",lado:"Lado direito",nome:"3ª"},
     {id:"m",lado:"Meio, ao fundo",nome:"—"}
   ];
   const CAMPOS = [{k:"min",t:"Mín."},{k:"max",t:"Máx."},{k:"med",t:"Média"}];
-  let store = null, records = [], pending = null;
+  let store = null, records = [], atual = null, lastInput = 0, saveTimer = null, saving = Promise.resolve();
 
-  /* ---------- monta o formulário ---------- */
+  /* ---------- formulário ---------- */
   (function build(){
     const box=$("groups"),lados=[...new Set(PONTOS.map(p=>p.lado))];
     box.style.cssText="display:flex;flex-direction:column;gap:12px";
     for(const lado of lados){
-      const g=document.createElement("div");g.className="grp";
-      const h=document.createElement("h3");h.textContent=lado;g.appendChild(h);
-      const grid=document.createElement("div");grid.className="grid";
-      grid.appendChild(Object.assign(document.createElement("span"),{className:"hd",textContent:""}));
-      CAMPOS.forEach(c=>grid.appendChild(Object.assign(document.createElement("span"),{className:"hd",textContent:c.t})));
+      const g=el("div",{className:"grp"},[el("h3",{textContent:lado})]);
+      const grid=el("div",{className:"grid"},[el("span",{className:"hd"})].concat(CAMPOS.map(c=>el("span",{className:"hd",textContent:c.t}))));
       for(const p of PONTOS.filter(p=>p.lado===lado)){
-        grid.appendChild(Object.assign(document.createElement("span"),{className:"pt",textContent:p.nome==="—"?"":p.nome}));
+        grid.appendChild(el("span",{className:"pt",textContent:p.nome==="—"?"":p.nome}));
         for(const c of CAMPOS){
-          const i=document.createElement("input");i.id=p.id+"_"+c.k;i.inputMode="decimal";i.autocomplete="off";i.placeholder="—";
+          const i=el("input",{id:p.id+"_"+c.k,inputMode:"decimal",autocomplete:"off",placeholder:"—"});
           i.setAttribute("aria-label",lado+(p.nome==="—"?"":", "+p.nome+" medição")+", "+c.t);
           if(c.k==="med"){i.readOnly=true;i.tabIndex=-1;i.className="calc";i.placeholder="auto"}
-          else i.addEventListener("input",()=>{i.classList.remove("bad");live()});
           grid.appendChild(i);
         }
       }
@@ -177,14 +171,16 @@ tr.sep td{border-top:1px solid var(--line)}
     }
   })();
 
+  function el(tag,props,kids){const e=Object.assign(document.createElement(tag),props||{});(kids||[]).forEach(k=>e.appendChild(k));return e}
   function pad(n){return String(n).padStart(2,"0")}
-  function setNow(){const d=new Date();$("dt").value=d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());$("hr").value=pad(d.getHours())+":"+pad(d.getMinutes())}
+  function nowParts(d){d=d||new Date();return {data:d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()),hora:pad(d.getHours())+":"+pad(d.getMinutes())}}
+  function setNow(){const n=nowParts();$("dt").value=n.data;$("hr").value=n.hora}
+  function hhmmss(d){return pad(d.getHours())+":"+pad(d.getMinutes())+":"+pad(d.getSeconds())}
   function parseDb(v){v=String(v).trim();if(v==="")return "";const n=Number(v.replace(",","."));return isFinite(n)?n:v}
   function fmt(n){if(n===""||n==null)return "—";if(typeof n==="number")return String(n).replace(".",",");return String(n)}
-  function fmtDate(iso){const [y,m,d]=iso.split("-");return d+"/"+m+"/"+y}
-  function msg(el,t,cls){el.textContent=t;el.className="msg"+(cls?" "+cls:"")}
-  function isTrio(o){return o&&typeof o==="object"}
-  function valid(r){return r&&typeof r.data==="string"&&r.pontos&&PONTOS.every(p=>isTrio(r.pontos[p.id]))}
+  function fmtDate(iso){const [y,m,d]=String(iso).split("-");return d+"/"+m+"/"+y}
+  function msg(e,t,cls){e.textContent=t;e.className="msg"+(cls?" "+cls:"")}
+  function valid(r){return r&&typeof r.data==="string"&&r.pontos&&PONTOS.every(p=>r.pontos[p.id]&&typeof r.pontos[p.id]==="object")}
   function r1(n){return Math.round(n*10)/10}
   function avg(a){a=a.filter(v=>typeof v==="number");return a.length?r1(a.reduce((x,y)=>x+y,0)/a.length):""}
   function media(o){return (typeof o.min==="number"&&typeof o.max==="number")?r1((o.min+o.max)/2):""}
@@ -199,110 +195,176 @@ tr.sep td{border-top:1px solid var(--line)}
     for(const p of PONTOS){const o={min:parseDb($(p.id+"_min").value),max:parseDb($(p.id+"_max").value)};o.med=media(o);pontos[p.id]=o}
     return pontos;
   }
+  function filled(pontos){return PONTOS.reduce((n,p)=>n+["min","max"].filter(k=>pontos[p.id][k]!=="").length,0)}
+  function hasAny(pontos){return PONTOS.some(p=>pontos[p.id].min!==""||pontos[p.id].max!=="")}
   function live(){
     const pontos=readForm();
     for(const p of PONTOS) $(p.id+"_med").value=pontos[p.id].med===""?"":fmt(pontos[p.id].med);
     const s=resumo(pontos);$("s_esq").textContent=fmt(s.esquerdo);$("s_dir").textContent=fmt(s.direito);$("s_mei").textContent=fmt(s.meio);$("s_ger").textContent=fmt(s.geral);
+    return pontos;
   }
-  // registros da versão antiga (um valor por ponto): o valor vai na coluna Média
+  function fillForm(r){
+    for(const p of PONTOS)for(const k of ["min","max"]){const v=r.pontos[p.id][k];$(p.id+"_"+k).value=v===""?"":fmt(v)}
+    $("dt").value=r.data;$("hr").value=r.hora;live();
+  }
+  function clearForm(){for(const p of PONTOS)for(const k of ["min","max","med"])$(p.id+"_"+k).value="";setNow();live()}
+  function sortKey(r){return r.data+" "+r.hora+" "+(r.salvoEm||"")}
+  function status(state,t){$("status").className="status "+(state||"");$("stxt").textContent=t}
+
+  /* registros da versão antiga (um valor por ponto): o valor vai na coluna Média */
   function fromLegacy(r){
     if(!r||typeof r.data!=="string"||!Array.isArray(r.esquerdo)||!Array.isArray(r.direito))return null;
     const v=x=>(x===undefined||x===null)?"":x,pontos={};
     ["e1","e2","e3"].forEach((id,i)=>pontos[id]={min:"",max:"",med:v(r.esquerdo[i])});
     ["d1","d2","d3"].forEach((id,i)=>pontos[id]={min:"",max:"",med:v(r.direito[i])});
     pontos.m={min:"",max:"",med:v(r.meio)};
-    return {data:r.data,hora:r.hora||"",pontos,salvoEm:r.salvoEm,legado:true};
+    return {id:"legado-"+(r.salvoEm||r.hora),data:r.data,hora:r.hora||"",pontos,salvoEm:r.salvoEm,legado:true,fechado:true};
   }
-  function sortKey(r){return r.data+" "+r.hora+" "+(r.salvoEm||"")}
-  function el(tag,props,kids){const e=Object.assign(document.createElement(tag),props||{});(kids||[]).forEach(k=>e.appendChild(k));return e}
 
-  /* tabela de um registro (usada na confirmação e na lista) */
+  /* ---------- reserva: cópia de tudo neste aparelho (localStorage + IndexedDB) ---------- */
+  const reserva = {
+    _db:null,
+    open(){if(this._db)return this._db;this._db=new Promise(res=>{try{const q=indexedDB.open("decibeis-salao-reserva",1);
+      q.onupgradeneeded=()=>q.result.createObjectStore("registros",{keyPath:"id"});q.onsuccess=()=>res(q.result);q.onerror=()=>res(null)}catch(e){res(null)}});return this._db},
+    async put(rec){
+      try{const all=JSON.parse(localStorage.getItem(KEY_RESERVA)||"{}");all[rec.id]=rec;localStorage.setItem(KEY_RESERVA,JSON.stringify(all))}catch(e){}
+      try{const db=await this.open();if(db)db.transaction("registros","readwrite").objectStore("registros").put(rec)}catch(e){}
+    },
+    async all(){
+      const out={};
+      try{Object.assign(out,JSON.parse(localStorage.getItem(KEY_RESERVA)||"{}"))}catch(e){}
+      try{const db=await this.open();if(db)await new Promise(res=>{const q=db.transaction("registros").objectStore("registros").getAll();q.onsuccess=()=>{(q.result||[]).forEach(r=>{if(!out[r.id])out[r.id]=r});res()};q.onerror=res})}catch(e){}
+      return Object.values(out).filter(valid);
+    }
+  };
+
+  /* ---------- armazenamento principal: banco do Claude quando aberto lá, senão o navegador ---------- */
+  const localStore = {
+    kind:"local",
+    read(){try{const v=JSON.parse(localStorage.getItem(KEY)||"[]");return Array.isArray(v)?v.filter(valid):[]}catch(e){return []}},
+    legacy(){try{const v=JSON.parse(localStorage.getItem("decibeis-salao:medicoes")||"[]");return Array.isArray(v)?v.map(fromLegacy).filter(Boolean):[]}catch(e){return []}},
+    async put(rec){
+      const all=this.read();rec.id=rec.id||("r"+Date.parse(rec.salvoEm||new Date()));
+      const i=all.findIndex(r=>r.id===rec.id);if(i>=0)all[i]=rec;else all.push(rec);
+      localStorage.setItem(KEY,JSON.stringify(all));records=all.concat(this.legacy());render();
+    },
+    async start(){
+      let main=this.read();
+      // se o principal sumiu, recupera da reserva
+      const res=await reserva.all(),ids=new Set(main.map(r=>r.id));
+      const faltando=res.filter(r=>!ids.has(r.id));
+      if(faltando.length){main=main.concat(faltando);try{localStorage.setItem(KEY,JSON.stringify(main))}catch(e){}}
+      records=main.concat(this.legacy());render();resume();
+    }
+  };
+  function claudeStore(db){return {
+    kind:"claude",
+    async put(rec){await db.collection("registros").doc(rec.id).set(rec)},
+    start(){
+      const timer=setTimeout(()=>emptyList("Não foi possível carregar. Verifique a conexão e abra a página de novo."),10000);
+      let novos=[],antigos=[],first=true;
+      const join=()=>{records=novos.concat(antigos);render();if(first){first=false;resume()}};
+      db.collection("registros").onSnapshot(snap=>{clearTimeout(timer);novos=snap.docs.map(d=>Object.assign({},d.data(),{id:d.id})).filter(valid);join()},
+        ()=>{clearTimeout(timer);emptyList("Erro ao carregar os registros. Recarregue a página.")});
+      db.collection("medicoes").onSnapshot(snap=>{antigos=snap.docs.map(d=>fromLegacy(d.data())).filter(Boolean);if(!first)join()},()=>{});
+    }
+  }}
+  function emptyList(t){$("list").textContent="";$("list").appendChild(el("p",{className:"empty",textContent:t}))}
+
+  /* ---------- autosave ---------- */
+  function persist(){
+    if(!atual)return;
+    const rec=JSON.parse(JSON.stringify(atual));
+    reserva.put(rec);                                    // reserva primeiro, sempre
+    try{localStorage.setItem(KEY_ATUAL,JSON.stringify(rec))}catch(e){}
+    if(!store){status("warn","Guardado na reserva do aparelho. Conectando…");return}
+    status("busy","Salvando…");
+    saving=saving.then(()=>store.put(rec)).then(
+      ()=>status("ok",(rec.fechado?"Medição concluída e salva às ":"Salvo automaticamente às ")+hhmmss(new Date())),
+      ()=>status("warn","Sem conexão agora. Os valores estão na reserva do aparelho e serão enviados na próxima alteração."));
+  }
+  function onEdit(){
+    lastInput=Date.now();
+    const pontos=live();
+    if(!atual){
+      if(!hasAny(pontos))return;
+      const n=nowParts(),agora=new Date().toISOString();
+      if($("dt").dataset.touched!=="1")$("dt").value=n.data;
+      if($("hr").dataset.touched!=="1")$("hr").value=n.hora;
+      atual={id:"r"+Date.now().toString(36)+Math.random().toString(36).slice(2,6),criadoEm:agora,fechado:false};
+    }
+    Object.assign(atual,{data:$("dt").value||nowParts().data,hora:$("hr").value||nowParts().hora,pontos,resumo:resumo(pontos),salvoEm:new Date().toISOString()});
+    clearTimeout(saveTimer);saveTimer=setTimeout(persist,500);
+    status("busy","Salvando…");
+    upsertLocal(atual);
+  }
+  function upsertLocal(rec){const i=records.findIndex(r=>r.id===rec.id);const c=JSON.parse(JSON.stringify(rec));if(i>=0)records[i]=c;else records.push(c);render()}
+  function fechar(motivo){
+    if(!atual)return;
+    clearTimeout(saveTimer);
+    atual.fechado=true;atual.fechadoEm=new Date().toISOString();
+    persist();
+    const h=atual.hora;atual=null;
+    try{localStorage.removeItem(KEY_ATUAL)}catch(e){}
+    ["dt","hr"].forEach(id=>delete $(id).dataset.touched);
+    clearForm();
+    msg($("msg"),"Medição das "+h+" concluída"+(motivo?" ("+motivo+")":"")+". Pode começar a próxima.","ok");
+  }
+  // volta para a medição em andamento depois de recarregar a página
+  function resume(){
+    let cand=null;
+    try{cand=JSON.parse(localStorage.getItem(KEY_ATUAL)||"null")}catch(e){}
+    if(cand&&valid(cand)){
+      const fresh=records.find(r=>r.id===cand.id);
+      if(fresh&&fresh.fechado)cand=null;
+    }
+    if(!cand||!valid(cand)||cand.fechado)return;
+    const parado=Date.now()-Date.parse(cand.salvoEm||0);
+    atual=cand;
+    if(parado>FECHA_PARADO_MS){fechar("parada há mais de 30 minutos");return}
+    fillForm(atual);lastInput=Date.now()-parado;
+    upsertLocal(atual);persist();
+    msg($("msg"),"Voltei para a medição das "+atual.hora+", que ainda estava em andamento.","ok");
+  }
+  setInterval(()=>{
+    if(!atual)return;
+    const parado=Date.now()-lastInput;
+    if(filled(atual.pontos)===14&&parado>=FECHA_COMPLETO_MS)fechar();
+    else if(parado>=FECHA_PARADO_MS)fechar("parada há 30 minutos");
+    else if(filled(atual.pontos)===14&&!atual.fechado){const s=Math.ceil((FECHA_COMPLETO_MS-parado)/1000);msg($("msg"),"Todos os campos preenchidos. A medição será concluída em "+s+" s se você não mexer mais.","")}
+  },1000);
+  setInterval(()=>{if(!atual&&$("dt").dataset.touched!=="1"&&$("hr").dataset.touched!=="1")setNow()},15000);
+  document.getElementById("groups").addEventListener("input",e=>{if(!e.target.readOnly)onEdit()});
+  ["dt","hr"].forEach(id=>$(id).addEventListener("input",()=>{$(id).dataset.touched="1";if(atual)onEdit()}));
+  $("form").addEventListener("submit",e=>e.preventDefault());
+  window.addEventListener("pagehide",()=>{if(atual){clearTimeout(saveTimer);persist()}});
+  document.addEventListener("visibilitychange",()=>{if(document.hidden&&atual){clearTimeout(saveTimer);persist()}});
+
+  /* ---------- lista ---------- */
   function recTable(pontos){
     const t=el("table");
     t.appendChild(el("thead",{},[el("tr",{},[el("th",{textContent:"Ponto"})].concat(CAMPOS.map(c=>el("th",{textContent:c.t}))))]));
     const tb=el("tbody");let last="";
     for(const p of PONTOS){
       const v=pontos[p.id],lado=p.lado.replace(", ao fundo","");
-      const tr=el("tr",{className:p.lado!==last&&last?"sep":""},[el("td",{textContent:p.nome==="—"?lado:lado.replace("Lado e","E").replace("Lado d","D")+" "+p.nome})]
-        .concat(CAMPOS.map(c=>el("td",{textContent:fmt(v[c.k])}))));
-      last=p.lado;tb.appendChild(tr);
+      tb.appendChild(el("tr",{className:p.lado!==last&&last?"sep":""},[el("td",{textContent:p.nome==="—"?lado:lado.replace("Lado e","E").replace("Lado d","D")+" "+p.nome})]
+        .concat(CAMPOS.map(c=>el("td",{textContent:fmt(v[c.k])})))));
+      last=p.lado;
     }
     const s=resumo(pontos);
     [["Média do lado esquerdo",s.esquerdo],["Média do lado direito",s.direito],["Média do meio",s.meio],["Média geral (das 3 médias)",s.geral]].forEach(([t2,v],i)=>
       tb.appendChild(el("tr",{className:"tot"+(i===0?" sep":"")},[el("td",{textContent:t2,colSpan:3}),el("td",{textContent:fmt(v)})])));
     t.appendChild(tb);return t;
   }
-
-  /* ---------- armazenamento: banco do Claude quando aberto lá, senão o próprio navegador ---------- */
-  const localStore = {
-    kind:"local",
-    read(){try{const v=JSON.parse(localStorage.getItem(KEY)||"[]");return Array.isArray(v)?v.filter(valid):[]}catch(e){return []}},
-    legacy(){try{const v=JSON.parse(localStorage.getItem("decibeis-salao:medicoes")||"[]");return Array.isArray(v)?v.map(fromLegacy).filter(Boolean):[]}catch(e){return []}},
-    async add(rec){const all=this.read();all.push(rec);localStorage.setItem(KEY,JSON.stringify(all));records=all.concat(this.legacy());render()},
-    start(){records=this.read().concat(this.legacy());render()}
-  };
-  function claudeStore(db){return {
-    kind:"claude",
-    async add(rec){await db.collection("registros").add(rec)},
-    start(){
-      const timer=setTimeout(()=>emptyList("Não foi possível carregar. Verifique a conexão e abra a página de novo."),10000);
-      let novos=[],antigos=[];const join=()=>{records=novos.concat(antigos);render()};
-      db.collection("registros").onSnapshot(snap=>{clearTimeout(timer);novos=snap.docs.map(d=>d.data()).filter(valid);join()},
-        ()=>{clearTimeout(timer);emptyList("Erro ao carregar os registros. Recarregue a página.")});
-      db.collection("medicoes").onSnapshot(snap=>{antigos=snap.docs.map(d=>fromLegacy(d.data())).filter(Boolean);join()},()=>{});
-    }
-  }}
-  function emptyList(t){$("list").textContent="";$("list").appendChild(el("p",{className:"empty",textContent:t}))}
-
-  /* ---------- hora acompanha o relógio até você mudar; rascunho salvo no aparelho ---------- */
-  const DRAFT="decibeis-salao:rascunho";let timeTouched=false;
-  ["dt","hr"].forEach(id=>$(id).addEventListener("input",()=>{timeTouched=true}));
-  setInterval(()=>{if(!timeTouched)setNow()},15000);
-  function saveDraft(){try{const d={};PONTOS.forEach(p=>["min","max"].forEach(k=>{const v=$(p.id+"_"+k).value;if(v)d[p.id+"_"+k]=v}));
-    if(Object.keys(d).length)localStorage.setItem(DRAFT,JSON.stringify(d));else localStorage.removeItem(DRAFT)}catch(e){}}
-  function loadDraft(){try{const d=JSON.parse(localStorage.getItem(DRAFT)||"{}");let n=0;for(const k in d){const i=$(k);if(i&&!i.readOnly){i.value=d[k];n++}}
-    if(n){live();msg($("msg"),"Recuperei os valores que você estava anotando.","ok")}}catch(e){}}
-  function clearDraft(){try{localStorage.removeItem(DRAFT)}catch(e){}}
-  document.addEventListener("input",e=>{if(e.target.closest&&e.target.closest("#groups"))saveDraft()});
-
-  /* ---------- formulário ---------- */
-  function inputs(){return PONTOS.flatMap(p=>CAMPOS.map(c=>$(p.id+"_"+c.k)))}
-  $("form").addEventListener("submit",e=>{
-    e.preventDefault();
-    if(!timeTouched||!$("dt").value||!$("hr").value) setNow();
-    const pontos=readForm();
-    pending={data:$("dt").value,hora:$("hr").value,pontos,resumo:resumo(pontos)};
-    const pv=$("preview");pv.textContent="";
-    pv.appendChild(el("p",{style:"margin:0 0 6px",textContent:fmtDate(pending.data)+" às "+pending.hora}));
-    pv.appendChild(recTable(pontos));
-    $("confirm").hidden=false;$("save").hidden=true;msg($("msg"),"");
-    $("confirm").scrollIntoView({block:"nearest"});
-  });
-  $("back").addEventListener("click",()=>{pending=null;$("confirm").hidden=true;$("save").hidden=false});
-  $("ok").addEventListener("click",async()=>{
-    if(!pending)return;
-    if(!store) return msg($("msg"),"Ainda conectando ao armazenamento. Aguarde um instante e tente de novo.","err");
-    $("ok").disabled=true;
-    try{
-      await store.add(Object.assign({},pending,{salvoEm:new Date().toISOString()}));
-      inputs().forEach(i=>i.value="");clearDraft();timeTouched=false;setNow();live();
-      pending=null;$("confirm").hidden=true;$("save").hidden=false;
-      msg($("msg"),"Medições salvas.","ok");
-    }catch(err){
-      msg($("msg"),store.kind==="local"?"Não foi possível salvar neste navegador. Saia do modo anônimo e tente de novo."
-        :(err&&err.code==="permission_denied"?"Você não tem permissão para salvar nesta página. Peça acesso ao dono.":"Não foi possível salvar. Verifique a conexão e tente de novo."),"err");
-    }finally{$("ok").disabled=false}
-  });
-
-  /* ---------- lista ---------- */
   function render(){
     records.sort((a,b)=>sortKey(b).localeCompare(sortKey(a)));
-    if(!records.length) emptyList("Nenhuma medição salva ainda. Anote os valores acima e toque em “Salvar medições”.");
+    if(!records.length) emptyList("Nenhuma medição ainda. Digite os valores acima: tudo é salvo sozinho.");
     else{
       const list=$("list");list.textContent="";
       for(const r of records){
+        const tag=r.legado?" · versão antiga, 1 valor por ponto (na coluna Média)":(r.fechado===false?" · em andamento":"");
         list.appendChild(el("div",{className:"rec"},[
-          el("h4",{},[document.createTextNode(fmtDate(r.data)+" "),el("span",{textContent:"às "+r.hora+(r.legado?" · versão antiga, 1 valor por ponto (na coluna Média)":"")})]),
+          el("h4",{},[document.createTextNode(fmtDate(r.data)+" "),el("span",{textContent:"às "+r.hora+tag})]),
           recTable(r.pontos)]));
       }
     }
@@ -317,7 +379,7 @@ tr.sep td{border-top:1px solid var(--line)}
   function buildPdf(list,periodo){
     const {jsPDF}=window.jspdf;const doc=new jsPDF({unit:"mm",format:"a4"});
     const W=210,L=18,R=W-18;let y=20;const gerado=new Date();
-    const X=[L+3,L+92,L+122,R-3]; // ponto | mín | máx | média (bordas direitas nos números)
+    const X=[L+3,L+92,L+122,R-3];
     const ROW=6.2,BLOCK=10+ROW+(PONTOS.length+4)*ROW+10;
     function head(){
       doc.setFont("helvetica","bold");doc.setFontSize(16);doc.setTextColor(0);doc.text("Medições de decibéis – Salão de Assembleia",L,y);y+=7;
@@ -330,10 +392,11 @@ tr.sep td{border-top:1px solid var(--line)}
     for(const r of asc){
       if(y+BLOCK>282){doc.addPage();y=20;head()}
       doc.setFont("helvetica","bold");doc.setFontSize(12);doc.text(fmtDate(r.data)+"  às "+r.hora,L,y);
-      if(r.legado){doc.setFont("helvetica","normal");doc.setFontSize(9);doc.setTextColor(90);doc.text("versão antiga do app: 1 valor por ponto, mostrado na coluna Média",L+48,y);doc.setTextColor(0);doc.setFont("helvetica","bold")}
+      const nota=r.legado?"versão antiga do app: 1 valor por ponto, mostrado na coluna Média":(r.fechado===false?"medição em andamento":"");
+      if(nota){doc.setFont("helvetica","normal");doc.setFontSize(9);doc.setTextColor(90);doc.text(nota,L+48,y);doc.setTextColor(0);doc.setFont("helvetica","bold")}
       y+=4;
       doc.setFillColor(227,239,235);doc.rect(L,y,R-L,ROW+0.5,"F");y+=4.4;
-      doc.setFontSize(9.5);doc.text("Ponto",X[0],y);CAMPOS.forEach((c,i)=>doc.text(c.t==="Média"?"Média":c.t,X[i+1],y,{align:"right"}));
+      doc.setFontSize(9.5);doc.text("Ponto",X[0],y);CAMPOS.forEach((c,i)=>doc.text(c.t,X[i+1],y,{align:"right"}));
       y+=ROW;doc.setFont("helvetica","normal");doc.setFontSize(10);
       let last="";
       for(const p of PONTOS){
@@ -356,6 +419,7 @@ tr.sep td{border-top:1px solid var(--line)}
   }
 
   $("pdf").addEventListener("click",async()=>{
+    if(atual){clearTimeout(saveTimer);persist()}
     const m=$("mes").value,list=m?records.filter(r=>r.data.startsWith(m)):records;
     if(!list.length) return msg($("pdfmsg"),"Não há registros para exportar.","err");
     if(!window.jspdf) return msg($("pdfmsg"),"O gerador de PDF não carregou. Recarregue a página.","err");
@@ -377,15 +441,15 @@ tr.sep td{border-top:1px solid var(--line)}
   });
 
   /* ---------- início ---------- */
-  setNow();loadDraft();
+  setNow();
   (async()=>{
     if(INSIDE_CLAUDE){
       const db=await window.claude.use("db");
-      if(db){store=claudeStore(db);$("where").textContent="As medições ficam salvas na sua conta Claude.";store.start();return}
-      emptyList("Entre na sua conta Claude para ver e salvar medições.");return;
+      if(db){store=claudeStore(db);$("where").textContent="Salvo na sua conta Claude, com uma cópia de reserva neste aparelho.";store.start();return}
+      store=localStore;$("where").textContent="Sem conexão com a conta Claude: salvando neste aparelho, com cópia de reserva.";store.start();return;
     }
     store=localStore;
-    $("where").textContent="As medições ficam salvas neste aparelho e neste navegador. Exporte o PDF regularmente como cópia.";
+    $("where").textContent="Salvo neste aparelho e navegador, com uma cópia de reserva separada. Exporte o PDF de vez em quando como cópia extra.";
     store.start();
   })();
 })();
