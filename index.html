@@ -16,24 +16,24 @@ body{margin:0}
 [hidden]{display:none!important}
 :root{
   padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
-  --bg:#f3f5f4; --surface:#ffffff; --fg:#17201d; --muted:#5d6b66; --line:#d8dfdc;
-  --accent:#1f6f5c; --accent-fg:#ffffff; --soft:#e3efeb; --err:#a3302b;
+  --bg:#ffffff; --surface:#ffffff; --fg:#0a0a0a; --muted:#4a5568; --line:#d5dbe5;
+  --accent:#1556d6; --accent-fg:#ffffff; --soft:#e8f0fe; --err:#c62828;
   --f-body:"Atkinson Hyperlegible",system-ui,sans-serif;
   --f-num:"JetBrains Mono",ui-monospace,monospace;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --bg:#111816; --surface:#19221f; --fg:#e6ece9; --muted:#97a6a0; --line:#2c3833;
-  --accent:#5cc3a6; --accent-fg:#0c1512; --soft:#1f2f2a; --err:#f08a84; color-scheme:dark}}
+  --bg:#000000; --surface:#0d0d0f; --fg:#ffffff; --muted:#a3acbb; --line:#2a2f3a;
+  --accent:#4d8dff; --accent-fg:#000000; --soft:#0f1d3a; --err:#ff6b6b; color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#111816; --surface:#19221f; --fg:#e6ece9; --muted:#97a6a0; --line:#2c3833;
-  --accent:#5cc3a6; --accent-fg:#0c1512; --soft:#1f2f2a; --err:#f08a84; color-scheme:dark}
+  --bg:#000000; --surface:#0d0d0f; --fg:#ffffff; --muted:#a3acbb; --line:#2a2f3a;
+  --accent:#4d8dff; --accent-fg:#000000; --soft:#0f1d3a; --err:#ff6b6b; color-scheme:dark}
 body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:16px;line-height:1.45}
 .wrap{max-width:600px;margin:0 auto;padding-block:20px 48px;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
   display:flex;flex-direction:column;gap:22px}
-header h1{font-size:1.6rem;margin:0;text-wrap:balance}
+header h1{font-size:1.6rem;margin:0;text-wrap:balance;color:var(--accent)}
 header p{margin:4px 0 0;color:var(--muted)}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-top:4px solid var(--accent);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:16px}
 .lbl{font-size:.78rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700}
 .when{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .when div{display:flex;flex-direction:column;gap:4px;min-width:0}
@@ -96,7 +96,6 @@ tr.sep td{border-top:1px solid var(--line)}
 <div class="wrap">
   <header>
     <h1>Decibéis do Salão</h1>
-    <p>Em cada ponto, anote a mínima e a máxima: 3 pontos no lado esquerdo, 3 no lado direito e 1 no meio, ao fundo. Tudo é salvo sozinho enquanto você digita, com uma cópia de reserva. Quando os 14 campos estiverem preenchidos e você parar de digitar por 1 minuto, a medição é concluída e o formulário fica livre para a próxima.</p>
   </header>
 
   <form class="card" id="form" novalidate>
@@ -395,23 +394,23 @@ tr.sep td{border-top:1px solid var(--line)}
       const nota=r.legado?"versão antiga do app: 1 valor por ponto, mostrado na coluna Média":(r.fechado===false?"medição em andamento":"");
       if(nota){doc.setFont("helvetica","normal");doc.setFontSize(9);doc.setTextColor(90);doc.text(nota,L+48,y);doc.setTextColor(0);doc.setFont("helvetica","bold")}
       y+=4;
-      doc.setFillColor(227,239,235);doc.rect(L,y,R-L,ROW+0.5,"F");y+=4.4;
+      doc.setFillColor(232,240,254);doc.rect(L,y,R-L,ROW+0.5,"F");y+=4.4;
       doc.setFontSize(9.5);doc.text("Ponto",X[0],y);CAMPOS.forEach((c,i)=>doc.text(c.t,X[i+1],y,{align:"right"}));
       y+=ROW;doc.setFont("helvetica","normal");doc.setFontSize(10);
       let last="";
       for(const p of PONTOS){
-        if(last&&p.lado!==last){doc.setDrawColor(200,208,205);doc.line(L,y-4.3,R,y-4.3)}
+        if(last&&p.lado!==last){doc.setDrawColor(200,210,228);doc.line(L,y-4.3,R,y-4.3)}
         last=p.lado;
         doc.text(p.nome==="—"?"Meio, ao fundo":p.lado+" – "+p.nome+" medição",X[0],y);
         CAMPOS.forEach((c,i)=>doc.text(fmt(r.pontos[p.id][c.k]),X[i+1],y,{align:"right"}));
         y+=ROW;
       }
       const s=resumo(r.pontos);
-      doc.setDrawColor(150,160,156);doc.line(L,y-4.3,R,y-4.3);doc.setFont("helvetica","bold");
+      doc.setDrawColor(21,86,214);doc.line(L,y-4.3,R,y-4.3);doc.setFont("helvetica","bold");
       [["Média do lado esquerdo",s.esquerdo],["Média do lado direito",s.direito],["Média do meio, ao fundo",s.meio],["Média geral (média das 3 médias acima)",s.geral]].forEach(([t,v])=>{
         doc.text(t,X[0],y);doc.text(fmt(v),X[3],y,{align:"right"});y+=ROW});
       doc.setFont("helvetica","normal");
-      doc.setDrawColor(150,160,156);doc.line(L,y-3.6,R,y-3.6);y+=6;
+      doc.setDrawColor(21,86,214);doc.line(L,y-3.6,R,y-3.6);y+=6;
     }
     const n=doc.getNumberOfPages();
     for(let i=1;i<=n;i++){doc.setPage(i);doc.setFontSize(8);doc.setTextColor(120);doc.text("Total: "+asc.length+" registro(s)   ·   Página "+i+" de "+n,L,290)}
