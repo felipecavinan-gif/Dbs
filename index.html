@@ -99,7 +99,7 @@ tr.sep td{border-top:1px solid var(--line)}
   </header>
 
   <form class="card" id="form" novalidate>
-    <div class="status" id="status"><i></i><span id="stxt">Comece a digitar para iniciar uma medição.</span></div>
+    <div class="status" id="status"><i></i><span id="stxt">Comece a digitar. Tudo é guardado enquanto você anota.</span></div>
     <div class="when">
       <div><label class="lbl" for="dt">Data</label><input type="date" id="dt"></div>
       <div><label class="lbl" for="hr">Hora</label><input type="time" id="hr"></div>
@@ -114,6 +114,7 @@ tr.sep td{border-top:1px solid var(--line)}
         <div class="geral"><span>Geral</span><b id="s_ger">—</b></div>
       </div>
     </div>
+    <button class="btn primary" type="button" id="save">Salvar medição</button>
     <p class="msg" id="msg" role="status"></p>
   </form>
 
@@ -141,7 +142,7 @@ tr.sep td{border-top:1px solid var(--line)}
   const KEY_RESERVA = "decibeis-salao:reserva"; // cópia de reserva completa
   const KEY_ATUAL = "decibeis-salao:atual";     // medição em andamento neste aparelho
   const INSIDE_CLAUDE = !!(window.claude && window.claude.use);
-  const FECHA_COMPLETO_MS = 60*1000, FECHA_PARADO_MS = 30*60*1000;
+  const FECHA_PARADO_MS = 30*60*1000;
   const PONTOS = [
     {id:"e1",lado:"Lado esquerdo",nome:"1ª"},{id:"e2",lado:"Lado esquerdo",nome:"2ª"},{id:"e3",lado:"Lado esquerdo",nome:"3ª"},
     {id:"d1",lado:"Lado direito",nome:"1ª"},{id:"d2",lado:"Lado direito",nome:"2ª"},{id:"d3",lado:"Lado direito",nome:"3ª"},
@@ -307,7 +308,7 @@ tr.sep td{border-top:1px solid var(--line)}
     try{localStorage.removeItem(KEY_ATUAL)}catch(e){}
     ["dt","hr"].forEach(id=>delete $(id).dataset.touched);
     clearForm();
-    msg($("msg"),"Medição das "+h+" concluída"+(motivo?" ("+motivo+")":"")+". Pode começar a próxima.","ok");
+    msg($("msg"),"Medição das "+h+" salva"+(motivo?" ("+motivo+")":"")+". Pode começar a próxima.","ok");
   }
   // volta para a medição em andamento depois de recarregar a página
   function resume(){
@@ -328,14 +329,21 @@ tr.sep td{border-top:1px solid var(--line)}
   setInterval(()=>{
     if(!atual)return;
     const parado=Date.now()-lastInput;
-    if(filled(atual.pontos)===14&&parado>=FECHA_COMPLETO_MS)fechar();
-    else if(parado>=FECHA_PARADO_MS)fechar("parada há 30 minutos");
-    else if(filled(atual.pontos)===14&&!atual.fechado){const s=Math.ceil((FECHA_COMPLETO_MS-parado)/1000);msg($("msg"),"Todos os campos preenchidos. A medição será concluída em "+s+" s se você não mexer mais.","")}
+    if(parado>=FECHA_PARADO_MS)fechar("salva sozinha após 30 minutos parada");
   },1000);
   setInterval(()=>{if(!atual&&$("dt").dataset.touched!=="1"&&$("hr").dataset.touched!=="1")setNow()},15000);
   document.getElementById("groups").addEventListener("input",e=>{if(!e.target.readOnly)onEdit()});
   ["dt","hr"].forEach(id=>$(id).addEventListener("input",()=>{$(id).dataset.touched="1";if(atual)onEdit()}));
   $("form").addEventListener("submit",e=>e.preventDefault());
+  $("save").addEventListener("click",()=>{
+    if(!atual){                      // salva mesmo sem nada digitado
+      const n=nowParts(),pontos=readForm();
+      atual={id:"r"+Date.now().toString(36)+Math.random().toString(36).slice(2,6),criadoEm:new Date().toISOString(),fechado:false,
+        data:$("dt").value||n.data,hora:$("hr").value||n.hora,pontos,resumo:resumo(pontos),salvoEm:new Date().toISOString()};
+      upsertLocal(atual);
+    }
+    fechar();
+  });
   window.addEventListener("pagehide",()=>{if(atual){clearTimeout(saveTimer);persist()}});
   document.addEventListener("visibilitychange",()=>{if(document.hidden&&atual){clearTimeout(saveTimer);persist()}});
 
