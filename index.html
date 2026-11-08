@@ -204,6 +204,15 @@ tr.sep td{border-top:1px solid var(--line)}
     for(const p of PONTOS) $(p.id+"_med").value=pontos[p.id].med===""?"":fmt(pontos[p.id].med);
     const s=resumo(pontos);$("s_esq").textContent=fmt(s.esquerdo);$("s_dir").textContent=fmt(s.direito);$("s_mei").textContent=fmt(s.meio);$("s_ger").textContent=fmt(s.geral);
   }
+  // registros da versão antiga (um valor por ponto): o valor vai na coluna Média
+  function fromLegacy(r){
+    if(!r||typeof r.data!=="string"||!Array.isArray(r.esquerdo)||!Array.isArray(r.direito))return null;
+    const v=x=>(x===undefined||x===null)?"":x,pontos={};
+    ["e1","e2","e3"].forEach((id,i)=>pontos[id]={min:"",max:"",med:v(r.esquerdo[i])});
+    ["d1","d2","d3"].forEach((id,i)=>pontos[id]={min:"",max:"",med:v(r.direito[i])});
+    pontos.m={min:"",max:"",med:v(r.meio)};
+    return {data:r.data,hora:r.hora||"",pontos,salvoEm:r.salvoEm,legado:true};
+  }
   function sortKey(r){return r.data+" "+r.hora+" "+(r.salvoEm||"")}
   function el(tag,props,kids){const e=Object.assign(document.createElement(tag),props||{});(kids||[]).forEach(k=>e.appendChild(k));return e}
 
@@ -228,25 +237,39 @@ tr.sep td{border-top:1px solid var(--line)}
   const localStore = {
     kind:"local",
     read(){try{const v=JSON.parse(localStorage.getItem(KEY)||"[]");return Array.isArray(v)?v.filter(valid):[]}catch(e){return []}},
-    async add(rec){const all=this.read();all.push(rec);localStorage.setItem(KEY,JSON.stringify(all));records=all;render()},
-    start(){records=this.read();render()}
+    legacy(){try{const v=JSON.parse(localStorage.getItem("decibeis-salao:medicoes")||"[]");return Array.isArray(v)?v.map(fromLegacy).filter(Boolean):[]}catch(e){return []}},
+    async add(rec){const all=this.read();all.push(rec);localStorage.setItem(KEY,JSON.stringify(all));records=all.concat(this.legacy());render()},
+    start(){records=this.read().concat(this.legacy());render()}
   };
   function claudeStore(db){return {
     kind:"claude",
     async add(rec){await db.collection("registros").add(rec)},
     start(){
       const timer=setTimeout(()=>emptyList("Não foi possível carregar. Verifique a conexão e abra a página de novo."),10000);
-      db.collection("registros").onSnapshot(snap=>{clearTimeout(timer);records=snap.docs.map(d=>d.data()).filter(valid);render()},
+      let novos=[],antigos=[];const join=()=>{records=novos.concat(antigos);render()};
+      db.collection("registros").onSnapshot(snap=>{clearTimeout(timer);novos=snap.docs.map(d=>d.data()).filter(valid);join()},
         ()=>{clearTimeout(timer);emptyList("Erro ao carregar os registros. Recarregue a página.")});
+      db.collection("medicoes").onSnapshot(snap=>{antigos=snap.docs.map(d=>fromLegacy(d.data())).filter(Boolean);join()},()=>{});
     }
   }}
   function emptyList(t){$("list").textContent="";$("list").appendChild(el("p",{className:"empty",textContent:t}))}
+
+  /* ---------- hora acompanha o relógio até você mudar; rascunho salvo no aparelho ---------- */
+  const DRAFT="decibeis-salao:rascunho";let timeTouched=false;
+  ["dt","hr"].forEach(id=>$(id).addEventListener("input",()=>{timeTouched=true}));
+  setInterval(()=>{if(!timeTouched)setNow()},15000);
+  function saveDraft(){try{const d={};PONTOS.forEach(p=>["min","max"].forEach(k=>{const v=$(p.id+"_"+k).value;if(v)d[p.id+"_"+k]=v}));
+    if(Object.keys(d).length)localStorage.setItem(DRAFT,JSON.stringify(d));else localStorage.removeItem(DRAFT)}catch(e){}}
+  function loadDraft(){try{const d=JSON.parse(localStorage.getItem(DRAFT)||"{}");let n=0;for(const k in d){const i=$(k);if(i&&!i.readOnly){i.value=d[k];n++}}
+    if(n){live();msg($("msg"),"Recuperei os valores que você estava anotando.","ok")}}catch(e){}}
+  function clearDraft(){try{localStorage.removeItem(DRAFT)}catch(e){}}
+  document.addEventListener("input",e=>{if(e.target.closest&&e.target.closest("#groups"))saveDraft()});
 
   /* ---------- formulário ---------- */
   function inputs(){return PONTOS.flatMap(p=>CAMPOS.map(c=>$(p.id+"_"+c.k)))}
   $("form").addEventListener("submit",e=>{
     e.preventDefault();
-    if(!$("dt").value||!$("hr").value) setNow();
+    if(!timeTouched||!$("dt").value||!$("hr").value) setNow();
     const pontos=readForm();
     pending={data:$("dt").value,hora:$("hr").value,pontos,resumo:resumo(pontos)};
     const pv=$("preview");pv.textContent="";
@@ -262,7 +285,7 @@ tr.sep td{border-top:1px solid var(--line)}
     $("ok").disabled=true;
     try{
       await store.add(Object.assign({},pending,{salvoEm:new Date().toISOString()}));
-      inputs().forEach(i=>i.value="");setNow();live();
+      inputs().forEach(i=>i.value="");clearDraft();timeTouched=false;setNow();live();
       pending=null;$("confirm").hidden=true;$("save").hidden=false;
       msg($("msg"),"Medições salvas.","ok");
     }catch(err){
@@ -279,7 +302,7 @@ tr.sep td{border-top:1px solid var(--line)}
       const list=$("list");list.textContent="";
       for(const r of records){
         list.appendChild(el("div",{className:"rec"},[
-          el("h4",{},[document.createTextNode(fmtDate(r.data)+" "),el("span",{textContent:"às "+r.hora})]),
+          el("h4",{},[document.createTextNode(fmtDate(r.data)+" "),el("span",{textContent:"às "+r.hora+(r.legado?" · versão antiga, 1 valor por ponto (na coluna Média)":"")})]),
           recTable(r.pontos)]));
       }
     }
@@ -306,7 +329,9 @@ tr.sep td{border-top:1px solid var(--line)}
     const asc=list.slice().sort((a,b)=>sortKey(a).localeCompare(sortKey(b)));
     for(const r of asc){
       if(y+BLOCK>282){doc.addPage();y=20;head()}
-      doc.setFont("helvetica","bold");doc.setFontSize(12);doc.text(fmtDate(r.data)+"  às "+r.hora,L,y);y+=4;
+      doc.setFont("helvetica","bold");doc.setFontSize(12);doc.text(fmtDate(r.data)+"  às "+r.hora,L,y);
+      if(r.legado){doc.setFont("helvetica","normal");doc.setFontSize(9);doc.setTextColor(90);doc.text("versão antiga do app: 1 valor por ponto, mostrado na coluna Média",L+48,y);doc.setTextColor(0);doc.setFont("helvetica","bold")}
+      y+=4;
       doc.setFillColor(227,239,235);doc.rect(L,y,R-L,ROW+0.5,"F");y+=4.4;
       doc.setFontSize(9.5);doc.text("Ponto",X[0],y);CAMPOS.forEach((c,i)=>doc.text(c.t==="Média"?"Média":c.t,X[i+1],y,{align:"right"}));
       y+=ROW;doc.setFont("helvetica","normal");doc.setFontSize(10);
@@ -352,7 +377,7 @@ tr.sep td{border-top:1px solid var(--line)}
   });
 
   /* ---------- início ---------- */
-  setNow();
+  setNow();loadDraft();
   (async()=>{
     if(INSIDE_CLAUDE){
       const db=await window.claude.use("db");
