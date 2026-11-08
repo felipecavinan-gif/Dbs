@@ -6,7 +6,7 @@ App simples para anotar as medições de decibéis (dB) do Salão de Assembleia:
 - **Lado direito:** 3 pontos
 - **Meio, ao fundo:** 1 ponto
 
-Em cada ponto você anota a **mínima** e a **máxima**. O app calcula sozinho a **média** de cada ponto ((mín + máx) ÷ 2), a **média das médias** de cada lado e a **média geral** dos 7 pontos. Qualquer valor é aceito e campos podem ficar em branco.
+Em cada ponto você anota a **mínima** e a **máxima**. O app calcula sozinho a **média de cada ponto** ((mín + máx) ÷ 2), a **média de cada lado** (esquerdo, direito e meio) e a **média geral**, que é a média dessas três médias. Qualquer valor é aceito e campos podem ficar em branco.
 
 Depois de salvo, um registro não pode ser editado nem apagado pelo app. Os registros são exportados em PDF, com a opção de todos ou de um mês.
 

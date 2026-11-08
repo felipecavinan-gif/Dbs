@@ -48,7 +48,8 @@ input[type=date],input[type=time],select{font:inherit;color:var(--fg);background
   border:1px solid var(--line);border-radius:9px;padding:8px 6px;text-align:center}
 .grid input:focus{border-color:var(--accent);outline:2px solid var(--accent);outline-offset:1px}
 .grid input.calc{background:var(--soft);border-style:dashed;color:var(--accent)}
-.sum{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.sum{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+@media (max-width:360px){.sum{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .sum div{border:1px solid var(--line);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:2px;min-width:0}
 .sum span{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700}
 .sum b{font-family:var(--f-num);font-size:1.25rem}
@@ -89,7 +90,7 @@ tr.sep td{border-top:1px solid var(--line)}
 <div class="wrap">
   <header>
     <h1>Decibéis do Salão</h1>
-    <p>Em cada ponto, anote a mínima e a máxima: 3 pontos no lado esquerdo, 3 no lado direito e 1 no meio, ao fundo. A média de cada ponto e a média das médias são calculadas sozinhas. Pode deixar campos em branco. Depois de salvo, o registro não pode ser alterado.</p>
+    <p>Em cada ponto, anote a mínima e a máxima: 3 pontos no lado esquerdo, 3 no lado direito e 1 no meio, ao fundo. O app calcula a média de cada ponto, a média de cada lado e a média geral. Pode deixar campos em branco. Depois de salvo, o registro não pode ser alterado.</p>
   </header>
 
   <form class="card" id="form" novalidate>
@@ -99,10 +100,11 @@ tr.sep td{border-top:1px solid var(--line)}
     </div>
     <div id="groups"></div>
     <div>
-      <span class="lbl">Média das médias (calculada)</span>
+      <span class="lbl">Médias calculadas</span>
       <div class="sum" id="sum" style="margin-top:6px">
         <div><span>Esquerdo</span><b id="s_esq">—</b></div>
         <div><span>Direito</span><b id="s_dir">—</b></div>
+        <div><span>Meio</span><b id="s_mei">—</b></div>
         <div class="geral"><span>Geral</span><b id="s_ger">—</b></div>
       </div>
     </div>
@@ -186,10 +188,11 @@ tr.sep td{border-top:1px solid var(--line)}
   function r1(n){return Math.round(n*10)/10}
   function avg(a){a=a.filter(v=>typeof v==="number");return a.length?r1(a.reduce((x,y)=>x+y,0)/a.length):""}
   function media(o){return (typeof o.min==="number"&&typeof o.max==="number")?r1((o.min+o.max)/2):""}
-  // média das médias: de cada lado (3 pontos) e geral (os 7 pontos)
+  // média de cada lado (esquerdo, direito, meio) e geral = média dessas três médias
   function resumo(pontos){
     const m=id=>pontos[id]&&pontos[id].med;
-    return {esquerdo:avg(["e1","e2","e3"].map(m)),direito:avg(["d1","d2","d3"].map(m)),geral:avg(PONTOS.map(p=>m(p.id)))};
+    const esquerdo=avg(["e1","e2","e3"].map(m)),direito=avg(["d1","d2","d3"].map(m)),meio=avg([m("m")]);
+    return {esquerdo,direito,meio,geral:avg([esquerdo,direito,meio])};
   }
   function readForm(){
     const pontos={};
@@ -199,7 +202,7 @@ tr.sep td{border-top:1px solid var(--line)}
   function live(){
     const pontos=readForm();
     for(const p of PONTOS) $(p.id+"_med").value=pontos[p.id].med===""?"":fmt(pontos[p.id].med);
-    const s=resumo(pontos);$("s_esq").textContent=fmt(s.esquerdo);$("s_dir").textContent=fmt(s.direito);$("s_ger").textContent=fmt(s.geral);
+    const s=resumo(pontos);$("s_esq").textContent=fmt(s.esquerdo);$("s_dir").textContent=fmt(s.direito);$("s_mei").textContent=fmt(s.meio);$("s_ger").textContent=fmt(s.geral);
   }
   function sortKey(r){return r.data+" "+r.hora+" "+(r.salvoEm||"")}
   function el(tag,props,kids){const e=Object.assign(document.createElement(tag),props||{});(kids||[]).forEach(k=>e.appendChild(k));return e}
@@ -216,7 +219,7 @@ tr.sep td{border-top:1px solid var(--line)}
       last=p.lado;tb.appendChild(tr);
     }
     const s=resumo(pontos);
-    [["Média das médias – esquerdo",s.esquerdo],["Média das médias – direito",s.direito],["Média geral (7 pontos)",s.geral]].forEach(([t2,v],i)=>
+    [["Média do lado esquerdo",s.esquerdo],["Média do lado direito",s.direito],["Média do meio",s.meio],["Média geral (das 3 médias)",s.geral]].forEach(([t2,v],i)=>
       tb.appendChild(el("tr",{className:"tot"+(i===0?" sep":"")},[el("td",{textContent:t2,colSpan:3}),el("td",{textContent:fmt(v)})])));
     t.appendChild(tb);return t;
   }
@@ -292,7 +295,7 @@ tr.sep td{border-top:1px solid var(--line)}
     const {jsPDF}=window.jspdf;const doc=new jsPDF({unit:"mm",format:"a4"});
     const W=210,L=18,R=W-18;let y=20;const gerado=new Date();
     const X=[L+3,L+92,L+122,R-3]; // ponto | mín | máx | média (bordas direitas nos números)
-    const ROW=6.2,BLOCK=10+ROW+(PONTOS.length+3)*ROW+10;
+    const ROW=6.2,BLOCK=10+ROW+(PONTOS.length+4)*ROW+10;
     function head(){
       doc.setFont("helvetica","bold");doc.setFontSize(16);doc.setTextColor(0);doc.text("Medições de decibéis – Salão de Assembleia",L,y);y+=7;
       doc.setFont("helvetica","normal");doc.setFontSize(10);doc.setTextColor(90);
@@ -317,7 +320,7 @@ tr.sep td{border-top:1px solid var(--line)}
       }
       const s=resumo(r.pontos);
       doc.setDrawColor(150,160,156);doc.line(L,y-4.3,R,y-4.3);doc.setFont("helvetica","bold");
-      [["Média das médias – lado esquerdo",s.esquerdo],["Média das médias – lado direito",s.direito],["Média geral (7 pontos)",s.geral]].forEach(([t,v])=>{
+      [["Média do lado esquerdo",s.esquerdo],["Média do lado direito",s.direito],["Média do meio, ao fundo",s.meio],["Média geral (média das 3 médias acima)",s.geral]].forEach(([t,v])=>{
         doc.text(t,X[0],y);doc.text(fmt(v),X[3],y,{align:"right"});y+=ROW});
       doc.setFont("helvetica","normal");
       doc.setDrawColor(150,160,156);doc.line(L,y-3.6,R,y-3.6);y+=6;
