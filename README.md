@@ -2,9 +2,11 @@
 
 App simples para anotar as medições de decibéis (dB) do Salão de Assembleia:
 
-- **Lado esquerdo:** 3 medições
-- **Lado direito:** 3 medições
-- **Meio, ao fundo:** 1 medição
+- **Lado esquerdo:** 3 pontos
+- **Lado direito:** 3 pontos
+- **Meio, ao fundo:** 1 ponto
+
+Em cada ponto são anotadas a **mínima**, a **máxima** e a **média** mostradas pelo decibelímetro (21 valores por registro). O app confere se a média está entre a mínima e a máxima antes de salvar.
 
 Depois de salvo, um registro não pode ser editado nem apagado pelo app. Os registros são exportados em PDF, com a opção de todos ou de um mês.
 

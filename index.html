@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@500;700&display=swap">
 <script src="jspdf.umd.min.js"></script>
 <style>
-/* Layout: uma coluna estreita; planta do salão com os pontos de medição, registros salvos embaixo */
+/* Layout: uma coluna estreita; um bloco por lado do salão, cada ponto com Mín / Máx / Média; registros salvos embaixo */
 *{box-sizing:border-box}
 html{color-scheme:light}
 body{margin:0}
@@ -38,18 +38,16 @@ header p{margin:4px 0 0;color:var(--muted)}
 .when{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .when div{display:flex;flex-direction:column;gap:4px;min-width:0}
 input[type=date],input[type=time],select{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;width:100%}
-/* planta do salão */
-.hall{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px;border:2px dashed var(--line);border-radius:12px;padding:12px;margin-top:6px}
-.stage{grid-column:1/-1;text-align:center;font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);background:var(--soft);border-radius:8px;padding:6px}
-.side{display:flex;flex-direction:column;gap:8px;min-width:0}
-.side h3,.mid h3{margin:0;font-size:.8rem;font-weight:700;color:var(--muted);text-align:center}
-.mid{grid-column:1/-1;display:flex;flex-direction:column;gap:8px;align-items:center}
-.mid .in{width:calc(50% - 7px)}
-.in{display:flex;align-items:baseline;gap:6px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:7px 10px}
-.in:focus-within{border-color:var(--accent);outline:2px solid var(--accent);outline-offset:1px}
-.in b{font-family:var(--f-num);font-size:.75rem;color:var(--muted);font-weight:500}
-.in input{font-family:var(--f-num);font-size:1.35rem;font-weight:700;width:100%;min-width:0;border:0;background:transparent;color:var(--fg);outline:none;text-align:right;padding:0}
-.in small{font-family:var(--f-num);color:var(--muted)}
+/* grade de medições */
+.grp{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.grp h3{margin:0;font-size:.85rem;font-weight:700;padding:8px 12px;background:var(--soft)}
+.grid{display:grid;grid-template-columns:3.2rem repeat(3,minmax(0,1fr));gap:8px;padding:10px 12px;align-items:center}
+.grid .hd{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;text-align:center}
+.grid .pt{font-family:var(--f-num);font-size:.85rem;color:var(--muted)}
+.grid input{font-family:var(--f-num);font-size:1.15rem;font-weight:700;width:100%;min-width:0;color:var(--fg);background:var(--bg);
+  border:1px solid var(--line);border-radius:9px;padding:8px 6px;text-align:center}
+.grid input:focus{border-color:var(--accent);outline:2px solid var(--accent);outline-offset:1px}
+.grid input.bad{border-color:var(--err);outline:2px solid var(--err);outline-offset:1px}
 .btn{font:inherit;font-weight:700;border-radius:10px;padding:13px 16px;border:1px solid transparent;cursor:pointer}
 .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .primary{background:var(--accent);color:var(--accent-fg)}
@@ -57,22 +55,23 @@ input[type=date],input[type=time],select{font:inherit;color:var(--fg);background
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .confirm{background:var(--soft);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px}
 .confirm p{margin:0}
-.confirm dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-variant-numeric:tabular-nums}
-.confirm dt{color:var(--muted)} .confirm dd{margin:0;font-family:var(--f-num)}
 .row{display:flex;gap:10px;flex-wrap:wrap}.row .btn{flex:1}
 .msg{font-size:.9rem;margin:0;min-height:1.2em}
 .msg.err{color:var(--err)} .msg.ok{color:var(--accent)}
 h2{font-size:1.1rem;margin:0}
 .listhead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
-.tablebox{overflow-x:auto}
+/* tabela de um registro */
+.rec{display:flex;flex-direction:column;gap:6px}
+.rec+.rec{border-top:1px solid var(--line);padding-top:14px}
+.rec h4{margin:0;font-size:.95rem}
+.rec h4 span{color:var(--muted);font-weight:400}
 table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
-th{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:right;padding:6px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:right;padding:4px 6px;border-bottom:1px solid var(--line)}
 th:first-child,td:first-child{text-align:left}
-td{padding:9px 6px;border-bottom:1px solid var(--line);text-align:right;font-family:var(--f-num);font-size:.9rem;white-space:nowrap}
-td:first-child{font-family:var(--f-body)}
-td{white-space:pre-line;vertical-align:top}
-td .d{display:block;font-size:.8rem;color:var(--muted)}
-.empty{color:var(--muted);text-align:center;padding:18px 6px;white-space:normal}
+td{padding:5px 6px;text-align:right;font-family:var(--f-num);font-size:.88rem}
+td:first-child{font-family:var(--f-body);color:var(--muted);font-size:.85rem}
+tr.sep td{border-top:1px solid var(--line)}
+.empty{color:var(--muted);text-align:center;padding:18px 6px;margin:0}
 .lock{font-size:.82rem;color:var(--muted)}
 .export{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end}
 .export div{display:flex;flex-direction:column;gap:4px;min-width:0}
@@ -82,7 +81,7 @@ td .d{display:block;font-size:.8rem;color:var(--muted)}
 <div class="wrap">
   <header>
     <h1>Decibéis do Salão</h1>
-    <p>Anote as medições: 3 no lado esquerdo, 3 no lado direito e 1 no meio, ao fundo. Depois de salvo, o registro não pode ser alterado.</p>
+    <p>Em cada ponto, anote a mínima, a máxima e a média do aparelho: 3 pontos no lado esquerdo, 3 no lado direito e 1 no meio, ao fundo. Depois de salvo, o registro não pode ser alterado.</p>
   </header>
 
   <form class="card" id="form" novalidate>
@@ -90,38 +89,12 @@ td .d{display:block;font-size:.8rem;color:var(--muted)}
       <div><label class="lbl" for="dt">Data</label><input type="date" id="dt" required></div>
       <div><label class="lbl" for="hr">Hora</label><input type="time" id="hr" required></div>
     </div>
-
-    <div>
-      <span class="lbl">Medições (dB)</span>
-      <div class="hall">
-        <div class="stage">Palco / tribuna</div>
-        <div class="side">
-          <h3>Lado esquerdo</h3>
-          <label class="in" for="e1"><b>1ª</b><input id="e1" inputmode="decimal" placeholder="—" autocomplete="off" aria-label="Esquerdo, 1ª medição"><small>dB</small></label>
-          <label class="in" for="e2"><b>2ª</b><input id="e2" inputmode="decimal" placeholder="—" autocomplete="off" aria-label="Esquerdo, 2ª medição"><small>dB</small></label>
-          <label class="in" for="e3"><b>3ª</b><input id="e3" inputmode="decimal" placeholder="—" autocomplete="off" aria-label="Esquerdo, 3ª medição"><small>dB</small></label>
-        </div>
-        <div class="side">
-          <h3>Lado direito</h3>
-          <label class="in" for="d1"><b>1ª</b><input id="d1" inputmode="decimal" placeholder="—" autocomplete="off" aria-label="Direito, 1ª medição"><small>dB</small></label>
-          <label class="in" for="d2"><b>2ª</b><input id="d2" inputmode="decimal" placeholder="—" autocomplete="off" aria-label="Direito, 2ª medição"><small>dB</small></label>
-          <label class="in" for="d3"><b>3ª</b><input id="d3" inputmode="decimal" placeholder="—" autocomplete="off" aria-label="Direito, 3ª medição"><small>dB</small></label>
-        </div>
-        <div class="mid">
-          <h3>Meio, ao fundo</h3>
-          <label class="in" for="m1"><input id="m1" inputmode="decimal" placeholder="—" autocomplete="off" aria-label="Meio, ao fundo"><small>dB</small></label>
-        </div>
-      </div>
-    </div>
+    <div id="groups"></div>
 
     <button class="btn primary" type="submit" id="save">Salvar medições</button>
     <div class="confirm" id="confirm" hidden>
-      <p><strong id="confirmWhen"></strong></p>
-      <dl>
-        <dt>Esquerdo</dt><dd id="cE"></dd>
-        <dt>Direito</dt><dd id="cD"></dd>
-        <dt>Meio</dt><dd id="cM"></dd>
-      </dl>
+      <p><strong>Confira antes de salvar</strong></p>
+      <div id="preview"></div>
       <p class="lock">Depois de salvo não dá para editar nem apagar.</p>
       <div class="row">
         <button class="btn ghost" type="button" id="back">Corrigir</button>
@@ -136,12 +109,7 @@ td .d{display:block;font-size:.8rem;color:var(--muted)}
       <h2>Registros salvos</h2>
       <span class="lock" id="count"></span>
     </div>
-    <div class="tablebox">
-      <table>
-        <thead><tr><th>Data / hora</th><th>Esquerdo</th><th>Direito</th><th>Meio</th></tr></thead>
-        <tbody id="rows"><tr><td colspan="4" class="empty">Carregando registros…</td></tr></tbody>
-      </table>
-    </div>
+    <div id="list"><p class="empty">Carregando registros…</p></div>
     <div class="export">
       <div><label class="lbl" for="mes">Período do PDF</label>
         <select id="mes"><option value="">Todos os registros</option></select></div>
@@ -156,19 +124,64 @@ td .d{display:block;font-size:.8rem;color:var(--muted)}
 (function(){
   const $ = id => document.getElementById(id);
   const MESES = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
-  const KEY = "decibeis-salao:medicoes";
+  const KEY = "decibeis-salao:v2";
   const INSIDE_CLAUDE = !!(window.claude && window.claude.use);
+  // os 7 pontos de medição, na ordem em que aparecem no app e no PDF
+  const PONTOS = [
+    {id:"e1",lado:"Lado esquerdo",nome:"1ª"},{id:"e2",lado:"Lado esquerdo",nome:"2ª"},{id:"e3",lado:"Lado esquerdo",nome:"3ª"},
+    {id:"d1",lado:"Lado direito",nome:"1ª"},{id:"d2",lado:"Lado direito",nome:"2ª"},{id:"d3",lado:"Lado direito",nome:"3ª"},
+    {id:"m",lado:"Meio, ao fundo",nome:"—"}
+  ];
+  const CAMPOS = [{k:"min",t:"Mín."},{k:"max",t:"Máx."},{k:"med",t:"Média"}];
   let store = null, records = [], pending = null;
+
+  /* ---------- monta o formulário ---------- */
+  (function build(){
+    const box=$("groups"),lados=[...new Set(PONTOS.map(p=>p.lado))];
+    box.style.cssText="display:flex;flex-direction:column;gap:12px";
+    for(const lado of lados){
+      const g=document.createElement("div");g.className="grp";
+      const h=document.createElement("h3");h.textContent=lado;g.appendChild(h);
+      const grid=document.createElement("div");grid.className="grid";
+      grid.appendChild(Object.assign(document.createElement("span"),{className:"hd",textContent:""}));
+      CAMPOS.forEach(c=>grid.appendChild(Object.assign(document.createElement("span"),{className:"hd",textContent:c.t})));
+      for(const p of PONTOS.filter(p=>p.lado===lado)){
+        grid.appendChild(Object.assign(document.createElement("span"),{className:"pt",textContent:p.nome==="—"?"":p.nome}));
+        for(const c of CAMPOS){
+          const i=document.createElement("input");i.id=p.id+"_"+c.k;i.inputMode="decimal";i.autocomplete="off";i.placeholder="—";
+          i.setAttribute("aria-label",lado+(p.nome==="—"?"":", "+p.nome+" medição")+", "+c.t);
+          i.addEventListener("input",()=>i.classList.remove("bad"));
+          grid.appendChild(i);
+        }
+      }
+      g.appendChild(grid);box.appendChild(g);
+    }
+  })();
 
   function pad(n){return String(n).padStart(2,"0")}
   function setNow(){const d=new Date();$("dt").value=d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());$("hr").value=pad(d.getHours())+":"+pad(d.getMinutes())}
   function parseDb(v){v=String(v).trim().replace(",",".");if(v==="")return null;const n=Number(v);return (isFinite(n)&&n>=20&&n<=140)?Math.round(n*10)/10:NaN}
   function fmt(n){return n.toFixed(1).replace(".",",")}
-  function fmt3(a){return a.map(fmt).join(" · ")}
   function fmtDate(iso){const [y,m,d]=iso.split("-");return d+"/"+m+"/"+y}
   function msg(el,t,cls){el.textContent=t;el.className="msg"+(cls?" "+cls:"")}
-  function valid(r){return r&&typeof r.data==="string"&&Array.isArray(r.esquerdo)&&r.esquerdo.length===3&&Array.isArray(r.direito)&&r.direito.length===3&&typeof r.meio==="number"}
+  function isTrio(o){return o&&typeof o.min==="number"&&typeof o.max==="number"&&typeof o.med==="number"}
+  function valid(r){return r&&typeof r.data==="string"&&r.pontos&&PONTOS.every(p=>isTrio(r.pontos[p.id]))}
   function sortKey(r){return r.data+" "+r.hora+" "+(r.salvoEm||"")}
+  function el(tag,props,kids){const e=Object.assign(document.createElement(tag),props||{});(kids||[]).forEach(k=>e.appendChild(k));return e}
+
+  /* tabela de um registro (usada na confirmação e na lista) */
+  function recTable(pontos){
+    const t=el("table");
+    t.appendChild(el("thead",{},[el("tr",{},[el("th",{textContent:"Ponto"})].concat(CAMPOS.map(c=>el("th",{textContent:c.t}))))]));
+    const tb=el("tbody");let last="";
+    for(const p of PONTOS){
+      const v=pontos[p.id],lado=p.lado.replace(", ao fundo","");
+      const tr=el("tr",{className:p.lado!==last&&last?"sep":""},[el("td",{textContent:p.nome==="—"?lado:lado.replace("Lado e","E").replace("Lado d","D")+" "+p.nome})]
+        .concat(CAMPOS.map(c=>el("td",{textContent:fmt(v[c.k])}))));
+      last=p.lado;tb.appendChild(tr);
+    }
+    t.appendChild(tb);return t;
+  }
 
   /* ---------- armazenamento: banco do Claude quando aberto lá, senão o próprio navegador ---------- */
   const localStore = {
@@ -179,28 +192,41 @@ td .d{display:block;font-size:.8rem;color:var(--muted)}
   };
   function claudeStore(db){return {
     kind:"claude",
-    async add(rec){await db.collection("medicoes").add(rec)},
+    async add(rec){await db.collection("registros").add(rec)},
     start(){
-      const timer=setTimeout(()=>emptyRow("Não foi possível carregar. Verifique a conexão e abra a página de novo."),10000);
-      db.collection("medicoes").onSnapshot(snap=>{clearTimeout(timer);records=snap.docs.map(d=>d.data()).filter(valid);render()},
-        ()=>{clearTimeout(timer);emptyRow("Erro ao carregar os registros. Recarregue a página.")});
+      const timer=setTimeout(()=>emptyList("Não foi possível carregar. Verifique a conexão e abra a página de novo."),10000);
+      db.collection("registros").onSnapshot(snap=>{clearTimeout(timer);records=snap.docs.map(d=>d.data()).filter(valid);render()},
+        ()=>{clearTimeout(timer);emptyList("Erro ao carregar os registros. Recarregue a página.")});
     }
   }}
-  function emptyRow(t){$("rows").innerHTML="";const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=4;td.className="empty";td.textContent=t;tr.appendChild(td);$("rows").appendChild(tr)}
+  function emptyList(t){$("list").textContent="";$("list").appendChild(el("p",{className:"empty",textContent:t}))}
 
   /* ---------- formulário ---------- */
-  const E=["e1","e2","e3"],D=["d1","d2","d3"],M="m1";
+  function inputs(){return PONTOS.flatMap(p=>CAMPOS.map(c=>$(p.id+"_"+c.k)))}
   $("form").addEventListener("submit",e=>{
     e.preventDefault();
-    const esq=E.map(id=>parseDb($(id).value)),dir=D.map(id=>parseDb($(id).value)),meio=parseDb($(M).value);
-    const all=esq.concat(dir,[meio]);
+    inputs().forEach(i=>i.classList.remove("bad"));
     if(!$("dt").value||!$("hr").value) return msg($("msg"),"Preencha a data e a hora.","err");
-    if(all.some(v=>v===null)) return msg($("msg"),"Preencha as 7 medições: 3 do lado esquerdo, 3 do lado direito e 1 do meio.","err");
-    if(all.some(v=>Number.isNaN(v))) return msg($("msg"),"Use números entre 20 e 140 dB, por exemplo 72,5.","err");
-    pending={data:$("dt").value,hora:$("hr").value,esquerdo:esq,direito:dir,meio:meio};
-    $("confirmWhen").textContent=fmtDate(pending.data)+" às "+pending.hora;
-    $("cE").textContent=fmt3(esq)+" dB";$("cD").textContent=fmt3(dir)+" dB";$("cM").textContent=fmt(meio)+" dB";
+    const pontos={},vazios=[],invalidos=[],fora=[];
+    for(const p of PONTOS){
+      const o={};
+      for(const c of CAMPOS){const i=$(p.id+"_"+c.k),v=parseDb(i.value);if(v===null)vazios.push(i);else if(Number.isNaN(v))invalidos.push(i);o[c.k]=v}
+      pontos[p.id]=o;
+      if(isTrio(o)&&!(o.min<=o.med&&o.med<=o.max))fora.push(...CAMPOS.map(c=>$(p.id+"_"+c.k)));
+    }
+    const bad=vazios.length?vazios:invalidos.length?invalidos:fora;
+    if(bad.length){
+      bad.forEach(i=>i.classList.add("bad"));bad[0].focus();
+      return msg($("msg"),vazios.length?"Faltam "+vazios.length+" valor(es). Preencha mínima, máxima e média de todos os pontos."
+        :invalidos.length?"Use números entre 20 e 140 dB, por exemplo 72,5."
+        :"Confira os campos marcados: a média deve ficar entre a mínima e a máxima.","err");
+    }
+    pending={data:$("dt").value,hora:$("hr").value,pontos};
+    const pv=$("preview");pv.textContent="";
+    pv.appendChild(el("p",{style:"margin:0 0 6px",textContent:fmtDate(pending.data)+" às "+pending.hora}));
+    pv.appendChild(recTable(pontos));
     $("confirm").hidden=false;$("save").hidden=true;msg($("msg"),"");
+    $("confirm").scrollIntoView({block:"nearest"});
   });
   $("back").addEventListener("click",()=>{pending=null;$("confirm").hidden=true;$("save").hidden=false});
   $("ok").addEventListener("click",async()=>{
@@ -209,7 +235,7 @@ td .d{display:block;font-size:.8rem;color:var(--muted)}
     $("ok").disabled=true;
     try{
       await store.add(Object.assign({},pending,{salvoEm:new Date().toISOString()}));
-      E.concat(D,[M]).forEach(id=>$(id).value="");setNow();
+      inputs().forEach(i=>i.value="");setNow();
       pending=null;$("confirm").hidden=true;$("save").hidden=false;
       msg($("msg"),"Medições salvas.","ok");
     }catch(err){
@@ -221,14 +247,13 @@ td .d{display:block;font-size:.8rem;color:var(--muted)}
   /* ---------- lista ---------- */
   function render(){
     records.sort((a,b)=>sortKey(b).localeCompare(sortKey(a)));
-    if(!records.length) emptyRow("Nenhuma medição salva ainda. Preencha os 7 valores acima e toque em “Salvar medições”.");
+    if(!records.length) emptyList("Nenhuma medição salva ainda. Preencha os valores acima e toque em “Salvar medições”.");
     else{
-      const tb=$("rows");tb.textContent="";
+      const list=$("list");list.textContent="";
       for(const r of records){
-        const tr=document.createElement("tr");
-        const td0=document.createElement("td");td0.textContent=fmtDate(r.data);const s=document.createElement("span");s.className="d";s.textContent=r.hora;td0.appendChild(s);tr.appendChild(td0);
-        [r.esquerdo.map(fmt).join("\n"),r.direito.map(fmt).join("\n"),fmt(r.meio)].forEach(t=>{const td=document.createElement("td");td.textContent=t;tr.appendChild(td)});
-        tb.appendChild(tr);
+        list.appendChild(el("div",{className:"rec"},[
+          el("h4",{},[document.createTextNode(fmtDate(r.data)+" "),el("span",{textContent:"às "+r.hora})]),
+          recTable(r.pontos)]));
       }
     }
     $("count").textContent=records.length?records.length+(records.length===1?" registro":" registros"):"";
@@ -240,36 +265,36 @@ td .d{display:block;font-size:.8rem;color:var(--muted)}
 
   /* ---------- PDF ---------- */
   function buildPdf(list,periodo){
-    const {jsPDF}=window.jspdf;const doc=new jsPDF({unit:"mm",format:"a4",orientation:"landscape"});
-    const W=297,L=14,R=W-14;let y=18;const gerado=new Date();
-    // colunas: data/hora | E1 E2 E3 | D1 D2 D3 | Meio  (bordas direitas)
-    const X=[L+2,L+70,L+98,L+126,L+160,L+188,L+216,R-2];
+    const {jsPDF}=window.jspdf;const doc=new jsPDF({unit:"mm",format:"a4"});
+    const W=210,L=18,R=W-18;let y=20;const gerado=new Date();
+    const X=[L+3,L+92,L+122,R-3]; // ponto | mín | máx | média (bordas direitas nos números)
+    const ROW=6.2,BLOCK=10+ROW+PONTOS.length*ROW+8;
     function head(){
       doc.setFont("helvetica","bold");doc.setFontSize(16);doc.setTextColor(0);doc.text("Medições de decibéis – Salão de Assembleia",L,y);y+=7;
       doc.setFont("helvetica","normal");doc.setFontSize(10);doc.setTextColor(90);
       doc.text("Período: "+periodo+"   ·   Gerado em "+gerado.toLocaleDateString("pt-BR")+" às "+gerado.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}),L,y);y+=5;
-      doc.text("Valores em dB, registrados conforme anotados, sem alteração.",L,y);y+=9;doc.setTextColor(0);
-      doc.setFillColor(227,239,235);doc.rect(L,y-5,R-L,14,"F");
-      doc.setFont("helvetica","bold");doc.setFontSize(10);
-      doc.text("Lado esquerdo",(X[1]+X[3])/2-4,y,{align:"center"});
-      doc.text("Lado direito",(X[4]+X[6])/2-4,y,{align:"center"});
-      doc.text("Meio (fundo)",X[7],y,{align:"right"});
-      y+=6;
-      doc.text("Data / hora",X[0],y);
-      ["1ª","2ª","3ª","1ª","2ª","3ª"].forEach((t,i)=>doc.text(t,X[i+1],y,{align:"right"}));
-      y+=9;doc.setFont("helvetica","normal");
+      doc.text("Valores em dB, registrados conforme anotados, sem alteração.",L,y);y+=10;doc.setTextColor(0);
     }
     head();
     const asc=list.slice().sort((a,b)=>sortKey(a).localeCompare(sortKey(b)));
     for(const r of asc){
-      if(y>192){doc.addPage();y=18;head()}
-      doc.text(fmtDate(r.data)+"  "+r.hora,X[0],y);
-      r.esquerdo.concat(r.direito).forEach((v,i)=>doc.text(fmt(v),X[i+1],y,{align:"right"}));
-      doc.text(fmt(r.meio),X[7],y,{align:"right"});
-      doc.setDrawColor(216,223,220);doc.line(L,y+2.5,R,y+2.5);y+=8;
+      if(y+BLOCK>282){doc.addPage();y=20;head()}
+      doc.setFont("helvetica","bold");doc.setFontSize(12);doc.text(fmtDate(r.data)+"  às "+r.hora,L,y);y+=4;
+      doc.setFillColor(227,239,235);doc.rect(L,y,R-L,ROW+0.5,"F");y+=4.4;
+      doc.setFontSize(9.5);doc.text("Ponto",X[0],y);CAMPOS.forEach((c,i)=>doc.text(c.t==="Média"?"Média":c.t,X[i+1],y,{align:"right"}));
+      y+=ROW;doc.setFont("helvetica","normal");doc.setFontSize(10);
+      let last="";
+      for(const p of PONTOS){
+        if(last&&p.lado!==last){doc.setDrawColor(200,208,205);doc.line(L,y-4.3,R,y-4.3)}
+        last=p.lado;
+        doc.text(p.nome==="—"?"Meio, ao fundo":p.lado+" – "+p.nome+" medição",X[0],y);
+        CAMPOS.forEach((c,i)=>doc.text(fmt(r.pontos[p.id][c.k]),X[i+1],y,{align:"right"}));
+        y+=ROW;
+      }
+      doc.setDrawColor(150,160,156);doc.line(L,y-3.6,R,y-3.6);y+=6;
     }
     const n=doc.getNumberOfPages();
-    for(let i=1;i<=n;i++){doc.setPage(i);doc.setFontSize(8);doc.setTextColor(120);doc.text("Total: "+asc.length+" registro(s)   ·   Página "+i+" de "+n,L,203)}
+    for(let i=1;i<=n;i++){doc.setPage(i);doc.setFontSize(8);doc.setTextColor(120);doc.text("Total: "+asc.length+" registro(s)   ·   Página "+i+" de "+n,L,290)}
     return doc.output("blob");
   }
 
@@ -300,7 +325,7 @@ td .d{display:block;font-size:.8rem;color:var(--muted)}
     if(INSIDE_CLAUDE){
       const db=await window.claude.use("db");
       if(db){store=claudeStore(db);$("where").textContent="As medições ficam salvas na sua conta Claude.";store.start();return}
-      emptyRow("Entre na sua conta Claude para ver e salvar medições.");return;
+      emptyList("Entre na sua conta Claude para ver e salvar medições.");return;
     }
     store=localStore;
     $("where").textContent="As medições ficam salvas neste aparelho e neste navegador. Exporte o PDF regularmente como cópia.";
