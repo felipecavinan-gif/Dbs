@@ -81,7 +81,7 @@ tr.sep td{border-top:1px solid var(--line)}
 <div class="wrap">
   <header>
     <h1>Decibéis do Salão</h1>
-    <p>Em cada ponto, anote a mínima, a máxima e a média do aparelho: 3 pontos no lado esquerdo, 3 no lado direito e 1 no meio, ao fundo. Depois de salvo, o registro não pode ser alterado.</p>
+    <p>Em cada ponto, anote a mínima, a máxima e a média do aparelho: 3 pontos no lado esquerdo, 3 no lado direito e 1 no meio, ao fundo. Pode deixar campos em branco. Depois de salvo, o registro não pode ser alterado.</p>
   </header>
 
   <form class="card" id="form" novalidate>
@@ -160,11 +160,11 @@ tr.sep td{border-top:1px solid var(--line)}
 
   function pad(n){return String(n).padStart(2,"0")}
   function setNow(){const d=new Date();$("dt").value=d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());$("hr").value=pad(d.getHours())+":"+pad(d.getMinutes())}
-  function parseDb(v){v=String(v).trim().replace(",",".");if(v==="")return null;const n=Number(v);return (isFinite(n)&&n>=20&&n<=140)?Math.round(n*10)/10:NaN}
-  function fmt(n){return n.toFixed(1).replace(".",",")}
+  function parseDb(v){v=String(v).trim();if(v==="")return "";const n=Number(v.replace(",","."));return isFinite(n)?n:v}
+  function fmt(n){if(n===""||n==null)return "—";if(typeof n==="number")return String(n).replace(".",",");return String(n)}
   function fmtDate(iso){const [y,m,d]=iso.split("-");return d+"/"+m+"/"+y}
   function msg(el,t,cls){el.textContent=t;el.className="msg"+(cls?" "+cls:"")}
-  function isTrio(o){return o&&typeof o.min==="number"&&typeof o.max==="number"&&typeof o.med==="number"}
+  function isTrio(o){return o&&typeof o==="object"}
   function valid(r){return r&&typeof r.data==="string"&&r.pontos&&PONTOS.every(p=>isTrio(r.pontos[p.id]))}
   function sortKey(r){return r.data+" "+r.hora+" "+(r.salvoEm||"")}
   function el(tag,props,kids){const e=Object.assign(document.createElement(tag),props||{});(kids||[]).forEach(k=>e.appendChild(k));return e}
@@ -205,22 +205,9 @@ tr.sep td{border-top:1px solid var(--line)}
   function inputs(){return PONTOS.flatMap(p=>CAMPOS.map(c=>$(p.id+"_"+c.k)))}
   $("form").addEventListener("submit",e=>{
     e.preventDefault();
-    inputs().forEach(i=>i.classList.remove("bad"));
-    if(!$("dt").value||!$("hr").value) return msg($("msg"),"Preencha a data e a hora.","err");
-    const pontos={},vazios=[],invalidos=[],fora=[];
-    for(const p of PONTOS){
-      const o={};
-      for(const c of CAMPOS){const i=$(p.id+"_"+c.k),v=parseDb(i.value);if(v===null)vazios.push(i);else if(Number.isNaN(v))invalidos.push(i);o[c.k]=v}
-      pontos[p.id]=o;
-      if(isTrio(o)&&!(o.min<=o.med&&o.med<=o.max))fora.push(...CAMPOS.map(c=>$(p.id+"_"+c.k)));
-    }
-    const bad=vazios.length?vazios:invalidos.length?invalidos:fora;
-    if(bad.length){
-      bad.forEach(i=>i.classList.add("bad"));bad[0].focus();
-      return msg($("msg"),vazios.length?"Faltam "+vazios.length+" valor(es). Preencha mínima, máxima e média de todos os pontos."
-        :invalidos.length?"Use números entre 20 e 140 dB, por exemplo 72,5."
-        :"Confira os campos marcados: a média deve ficar entre a mínima e a máxima.","err");
-    }
+    if(!$("dt").value||!$("hr").value) setNow();
+    const pontos={};
+    for(const p of PONTOS){const o={};for(const c of CAMPOS)o[c.k]=parseDb($(p.id+"_"+c.k).value);pontos[p.id]=o}
     pending={data:$("dt").value,hora:$("hr").value,pontos};
     const pv=$("preview");pv.textContent="";
     pv.appendChild(el("p",{style:"margin:0 0 6px",textContent:fmtDate(pending.data)+" às "+pending.hora}));
@@ -247,7 +234,7 @@ tr.sep td{border-top:1px solid var(--line)}
   /* ---------- lista ---------- */
   function render(){
     records.sort((a,b)=>sortKey(b).localeCompare(sortKey(a)));
-    if(!records.length) emptyList("Nenhuma medição salva ainda. Preencha os valores acima e toque em “Salvar medições”.");
+    if(!records.length) emptyList("Nenhuma medição salva ainda. Anote os valores acima e toque em “Salvar medições”.");
     else{
       const list=$("list");list.textContent="";
       for(const r of records){
