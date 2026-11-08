@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Decibéis do Salão</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<script src="jspdf.umd.min.js"></script>
+<style>
+/* Layout: uma coluna estreita; planta do salão com os pontos de medição, registros salvos embaixo */
+*{box-sizing:border-box}
+html{color-scheme:light}
+body{margin:0}
+[hidden]{display:none!important}
+:root{
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+  --bg:#f3f5f4; --surface:#ffffff; --fg:#17201d; --muted:#5d6b66; --line:#d8dfdc;
+  --accent:#1f6f5c; --accent-fg:#ffffff; --soft:#e3efeb; --err:#a3302b;
+  --f-body:"Atkinson Hyperlegible",system-ui,sans-serif;
+  --f-num:"JetBrains Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#111816; --surface:#19221f; --fg:#e6ece9; --muted:#97a6a0; --line:#2c3833;
+  --accent:#5cc3a6; --accent-fg:#0c1512; --soft:#1f2f2a; --err:#f08a84; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#111816; --surface:#19221f; --fg:#e6ece9; --muted:#97a6a0; --line:#2c3833;
+  --accent:#5cc3a6; --accent-fg:#0c1512; --soft:#1f2f2a; --err:#f08a84; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:16px;line-height:1.45}
+.wrap{max-width:600px;margin:0 auto;padding-block:20px 48px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:flex;flex-direction:column;gap:22px}
+header h1{font-size:1.6rem;margin:0;text-wrap:balance}
+header p{margin:4px 0 0;color:var(--muted)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:16px}
+.lbl{font-size:.78rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700}
+.when{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.when div{display:flex;flex-direction:column;gap:4px;min-width:0}
+input[type=date],input[type=time],select{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;width:100%}
+/* planta do salão */
+.hall{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px;border:2px dashed var(--line);border-radius:12px;padding:12px;margin-top:6px}
+.stage{grid-column:1/-1;text-align:center;font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);background:var(--soft);border-radius:8px;padding:6px}
+.side{display:flex;flex-direction:column;gap:8px;min-width:0}
+.side h3,.mid h3{margin:0;font-size:.8rem;font-weight:700;color:var(--muted);text-align:center}
+.mid{grid-column:1/-1;display:flex;flex-direction:column;gap:8px;align-items:center}
+.mid .in{width:calc(50% - 7px)}
+.in{display:flex;align-items:baseline;gap:6px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:7px 10px}
+.in:focus-within{border-color:var(--accent);outline:2px solid var(--accent);outline-offset:1px}
+.in b{font-family:var(--f-num);font-size:.75rem;color:var(--muted);font-weight:500}
+.in input{font-family:var(--f-num);font-size:1.35rem;font-weight:700;width:100%;min-width:0;border:0;background:transparent;color:var(--fg);outline:none;text-align:right;padding:0}
+.in small{font-family:var(--f-num);color:var(--muted)}
+.btn{font:inherit;font-weight:700;border-radius:10px;padding:13px 16px;border:1px solid transparent;cursor:pointer}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.primary{background:var(--accent);color:var(--accent-fg)}
+.ghost{background:transparent;color:var(--fg);border-color:var(--line)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.confirm{background:var(--soft);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.confirm p{margin:0}
+.confirm dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-variant-numeric:tabular-nums}
+.confirm dt{color:var(--muted)} .confirm dd{margin:0;font-family:var(--f-num)}
+.row{display:flex;gap:10px;flex-wrap:wrap}.row .btn{flex:1}
+.msg{font-size:.9rem;margin:0;min-height:1.2em}
+.msg.err{color:var(--err)} .msg.ok{color:var(--accent)}
+h2{font-size:1.1rem;margin:0}
+.listhead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.tablebox{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:right;padding:6px;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+td{padding:9px 6px;border-bottom:1px solid var(--line);text-align:right;font-family:var(--f-num);font-size:.9rem;white-space:nowrap}
+td:first-child{font-family:var(--f-body)}
+td{white-space:pre-line;vertical-align:top}
+td .d{display:block;font-size:.8rem;color:var(--muted)}
+.empty{color:var(--muted);text-align:center;padding:18px 6px;white-space:normal}
+.lock{font-size:.82rem;color:var(--muted)}
+.export{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end}
+.export div{display:flex;flex-direction:column;gap:4px;min-width:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Decibéis do Salão</h1>
+    <p>Anote as medições: 3 no lado esquerdo, 3 no lado direito e 1 no meio, ao fundo. Depois de salvo, o registro não pode ser alterado.</p>
+  </header>
+
+  <form class="card" id="form" novalidate>
+    <div class="when">
+      <div><label class="lbl" for="dt">Data</label><input type="date" id="dt" required></div>
+      <div><label class="lbl" for="hr">Hora</label><input type="time" id="hr" required></div>
+    </div>
+
+    <div>
+      <span class="lbl">Medições (dB)</span>
+      <div class="hall">
+        <div class="stage">Palco / tribuna</div>
+        <div class="side">
+          <h3>Lado esquerdo</h3>
+          <label class="in" for="e1"><b>1ª</b><input id="e1" inputmode="decimal" placeholder="—" autocomplete="off" aria-label="Esquerdo, 1ª medição"><small>dB</small></label>
+          <label class="in" for="e2"><b>2ª</b><input id="e2" inputmode="decimal" placeholder="—" autocomplete="off" aria-label="Esquerdo, 2ª medição"><small>dB</small></label>
+          <label class="in" for="e3"><b>3ª</b><input id="e3" inputmode="decimal" placeholder="—" autocomplete="off" aria-label="Esquerdo, 3ª medição"><small>dB</small></label>
+        </div>
+        <div class="side">
+          <h3>Lado direito</h3>
+          <label class="in" for="d1"><b>1ª</b><input id="d1" inputmode="decimal" placeholder="—" autocomplete="off" aria-label="Direito, 1ª medição"><small>dB</small></label>
+          <label class="in" for="d2"><b>2ª</b><input id="d2" inputmode="decimal" placeholder="—" autocomplete="off" aria-label="Direito, 2ª medição"><small>dB</small></label>
+          <label class="in" for="d3"><b>3ª</b><input id="d3" inputmode="decimal" placeholder="—" autocomplete="off" aria-label="Direito, 3ª medição"><small>dB</small></label>
+        </div>
+        <div class="mid">
+          <h3>Meio, ao fundo</h3>
+          <label class="in" for="m1"><input id="m1" inputmode="decimal" placeholder="—" autocomplete="off" aria-label="Meio, ao fundo"><small>dB</small></label>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn primary" type="submit" id="save">Salvar medições</button>
+    <div class="confirm" id="confirm" hidden>
+      <p><strong id="confirmWhen"></strong></p>
+      <dl>
+        <dt>Esquerdo</dt><dd id="cE"></dd>
+        <dt>Direito</dt><dd id="cD"></dd>
+        <dt>Meio</dt><dd id="cM"></dd>
+      </dl>
+      <p class="lock">Depois de salvo não dá para editar nem apagar.</p>
+      <div class="row">
+        <button class="btn ghost" type="button" id="back">Corrigir</button>
+        <button class="btn primary" type="button" id="ok">Confirmar e salvar</button>
+      </div>
+    </div>
+    <p class="msg" id="msg" role="status"></p>
+  </form>
+
+  <section class="card">
+    <div class="listhead">
+      <h2>Registros salvos</h2>
+      <span class="lock" id="count"></span>
+    </div>
+    <div class="tablebox">
+      <table>
+        <thead><tr><th>Data / hora</th><th>Esquerdo</th><th>Direito</th><th>Meio</th></tr></thead>
+        <tbody id="rows"><tr><td colspan="4" class="empty">Carregando registros…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="export">
+      <div><label class="lbl" for="mes">Período do PDF</label>
+        <select id="mes"><option value="">Todos os registros</option></select></div>
+      <button class="btn primary" type="button" id="pdf">Exportar PDF</button>
+    </div>
+    <p class="msg" id="pdfmsg" role="status"></p>
+    <p class="lock" id="where"></p>
+  </section>
+</div>
+
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const MESES = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+  const KEY = "decibeis-salao:medicoes";
+  const INSIDE_CLAUDE = !!(window.claude && window.claude.use);
+  let store = null, records = [], pending = null;
+
+  function pad(n){return String(n).padStart(2,"0")}
+  function setNow(){const d=new Date();$("dt").value=d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());$("hr").value=pad(d.getHours())+":"+pad(d.getMinutes())}
+  function parseDb(v){v=String(v).trim().replace(",",".");if(v==="")return null;const n=Number(v);return (isFinite(n)&&n>=20&&n<=140)?Math.round(n*10)/10:NaN}
+  function fmt(n){return n.toFixed(1).replace(".",",")}
+  function fmt3(a){return a.map(fmt).join(" · ")}
+  function fmtDate(iso){const [y,m,d]=iso.split("-");return d+"/"+m+"/"+y}
+  function msg(el,t,cls){el.textContent=t;el.className="msg"+(cls?" "+cls:"")}
+  function valid(r){return r&&typeof r.data==="string"&&Array.isArray(r.esquerdo)&&r.esquerdo.length===3&&Array.isArray(r.direito)&&r.direito.length===3&&typeof r.meio==="number"}
+  function sortKey(r){return r.data+" "+r.hora+" "+(r.salvoEm||"")}
+
+  /* ---------- armazenamento: banco do Claude quando aberto lá, senão o próprio navegador ---------- */
+  const localStore = {
+    kind:"local",
+    read(){try{const v=JSON.parse(localStorage.getItem(KEY)||"[]");return Array.isArray(v)?v.filter(valid):[]}catch(e){return []}},
+    async add(rec){const all=this.read();all.push(rec);localStorage.setItem(KEY,JSON.stringify(all));records=all;render()},
+    start(){records=this.read();render()}
+  };
+  function claudeStore(db){return {
+    kind:"claude",
+    async add(rec){await db.collection("medicoes").add(rec)},
+    start(){
+      const timer=setTimeout(()=>emptyRow("Não foi possível carregar. Verifique a conexão e abra a página de novo."),10000);
+      db.collection("medicoes").onSnapshot(snap=>{clearTimeout(timer);records=snap.docs.map(d=>d.data()).filter(valid);render()},
+        ()=>{clearTimeout(timer);emptyRow("Erro ao carregar os registros. Recarregue a página.")});
+    }
+  }}
+  function emptyRow(t){$("rows").innerHTML="";const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=4;td.className="empty";td.textContent=t;tr.appendChild(td);$("rows").appendChild(tr)}
+
+  /* ---------- formulário ---------- */
+  const E=["e1","e2","e3"],D=["d1","d2","d3"],M="m1";
+  $("form").addEventListener("submit",e=>{
+    e.preventDefault();
+    const esq=E.map(id=>parseDb($(id).value)),dir=D.map(id=>parseDb($(id).value)),meio=parseDb($(M).value);
+    const all=esq.concat(dir,[meio]);
+    if(!$("dt").value||!$("hr").value) return msg($("msg"),"Preencha a data e a hora.","err");
+    if(all.some(v=>v===null)) return msg($("msg"),"Preencha as 7 medições: 3 do lado esquerdo, 3 do lado direito e 1 do meio.","err");
+    if(all.some(v=>Number.isNaN(v))) return msg($("msg"),"Use números entre 20 e 140 dB, por exemplo 72,5.","err");
+    pending={data:$("dt").value,hora:$("hr").value,esquerdo:esq,direito:dir,meio:meio};
+    $("confirmWhen").textContent=fmtDate(pending.data)+" às "+pending.hora;
+    $("cE").textContent=fmt3(esq)+" dB";$("cD").textContent=fmt3(dir)+" dB";$("cM").textContent=fmt(meio)+" dB";
+    $("confirm").hidden=false;$("save").hidden=true;msg($("msg"),"");
+  });
+  $("back").addEventListener("click",()=>{pending=null;$("confirm").hidden=true;$("save").hidden=false});
+  $("ok").addEventListener("click",async()=>{
+    if(!pending)return;
+    if(!store) return msg($("msg"),"Ainda conectando ao armazenamento. Aguarde um instante e tente de novo.","err");
+    $("ok").disabled=true;
+    try{
+      await store.add(Object.assign({},pending,{salvoEm:new Date().toISOString()}));
+      E.concat(D,[M]).forEach(id=>$(id).value="");setNow();
+      pending=null;$("confirm").hidden=true;$("save").hidden=false;
+      msg($("msg"),"Medições salvas.","ok");
+    }catch(err){
+      msg($("msg"),store.kind==="local"?"Não foi possível salvar neste navegador. Saia do modo anônimo e tente de novo."
+        :(err&&err.code==="permission_denied"?"Você não tem permissão para salvar nesta página. Peça acesso ao dono.":"Não foi possível salvar. Verifique a conexão e tente de novo."),"err");
+    }finally{$("ok").disabled=false}
+  });
+
+  /* ---------- lista ---------- */
+  function render(){
+    records.sort((a,b)=>sortKey(b).localeCompare(sortKey(a)));
+    if(!records.length) emptyRow("Nenhuma medição salva ainda. Preencha os 7 valores acima e toque em “Salvar medições”.");
+    else{
+      const tb=$("rows");tb.textContent="";
+      for(const r of records){
+        const tr=document.createElement("tr");
+        const td0=document.createElement("td");td0.textContent=fmtDate(r.data);const s=document.createElement("span");s.className="d";s.textContent=r.hora;td0.appendChild(s);tr.appendChild(td0);
+        [r.esquerdo.map(fmt).join("\n"),r.direito.map(fmt).join("\n"),fmt(r.meio)].forEach(t=>{const td=document.createElement("td");td.textContent=t;tr.appendChild(td)});
+        tb.appendChild(tr);
+      }
+    }
+    $("count").textContent=records.length?records.length+(records.length===1?" registro":" registros"):"";
+    const sel=$("mes"),cur=sel.value,months=[...new Set(records.map(r=>r.data.slice(0,7)))].sort().reverse();
+    sel.innerHTML='<option value="">Todos os registros</option>';
+    for(const m of months){const o=document.createElement("option");o.value=m;o.textContent=MESES[+m.slice(5)-1]+" de "+m.slice(0,4);sel.appendChild(o)}
+    if(months.includes(cur))sel.value=cur;
+  }
+
+  /* ---------- PDF ---------- */
+  function buildPdf(list,periodo){
+    const {jsPDF}=window.jspdf;const doc=new jsPDF({unit:"mm",format:"a4",orientation:"landscape"});
+    const W=297,L=14,R=W-14;let y=18;const gerado=new Date();
+    // colunas: data/hora | E1 E2 E3 | D1 D2 D3 | Meio  (bordas direitas)
+    const X=[L+2,L+70,L+98,L+126,L+160,L+188,L+216,R-2];
+    function head(){
+      doc.setFont("helvetica","bold");doc.setFontSize(16);doc.setTextColor(0);doc.text("Medições de decibéis – Salão de Assembleia",L,y);y+=7;
+      doc.setFont("helvetica","normal");doc.setFontSize(10);doc.setTextColor(90);
+      doc.text("Período: "+periodo+"   ·   Gerado em "+gerado.toLocaleDateString("pt-BR")+" às "+gerado.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}),L,y);y+=5;
+      doc.text("Valores em dB, registrados conforme anotados, sem alteração.",L,y);y+=9;doc.setTextColor(0);
+      doc.setFillColor(227,239,235);doc.rect(L,y-5,R-L,14,"F");
+      doc.setFont("helvetica","bold");doc.setFontSize(10);
+      doc.text("Lado esquerdo",(X[1]+X[3])/2-4,y,{align:"center"});
+      doc.text("Lado direito",(X[4]+X[6])/2-4,y,{align:"center"});
+      doc.text("Meio (fundo)",X[7],y,{align:"right"});
+      y+=6;
+      doc.text("Data / hora",X[0],y);
+      ["1ª","2ª","3ª","1ª","2ª","3ª"].forEach((t,i)=>doc.text(t,X[i+1],y,{align:"right"}));
+      y+=9;doc.setFont("helvetica","normal");
+    }
+    head();
+    const asc=list.slice().sort((a,b)=>sortKey(a).localeCompare(sortKey(b)));
+    for(const r of asc){
+      if(y>192){doc.addPage();y=18;head()}
+      doc.text(fmtDate(r.data)+"  "+r.hora,X[0],y);
+      r.esquerdo.concat(r.direito).forEach((v,i)=>doc.text(fmt(v),X[i+1],y,{align:"right"}));
+      doc.text(fmt(r.meio),X[7],y,{align:"right"});
+      doc.setDrawColor(216,223,220);doc.line(L,y+2.5,R,y+2.5);y+=8;
+    }
+    const n=doc.getNumberOfPages();
+    for(let i=1;i<=n;i++){doc.setPage(i);doc.setFontSize(8);doc.setTextColor(120);doc.text("Total: "+asc.length+" registro(s)   ·   Página "+i+" de "+n,L,203)}
+    return doc.output("blob");
+  }
+
+  $("pdf").addEventListener("click",async()=>{
+    const m=$("mes").value,list=m?records.filter(r=>r.data.startsWith(m)):records;
+    if(!list.length) return msg($("pdfmsg"),"Não há registros para exportar.","err");
+    if(!window.jspdf) return msg($("pdfmsg"),"O gerador de PDF não carregou. Recarregue a página.","err");
+    const periodo=m?MESES[+m.slice(5)-1]+" de "+m.slice(0,4):"todos os registros";
+    const filename="decibeis-salao-"+(m||"todos")+".pdf";
+    let blob;
+    try{blob=buildPdf(list,periodo)}catch(e){return msg($("pdfmsg"),"Não foi possível gerar o PDF.","err")}
+    if(INSIDE_CLAUDE){
+      const dl=await window.claude.use("downloads");
+      if(!dl) return msg($("pdfmsg"),"Esta visualização não permite baixar arquivos. Abra a página no claude.ai.","err");
+      try{await dl.save({filename,data:blob});msg($("pdfmsg"),"PDF salvo.","ok")}
+      catch(err){msg($("pdfmsg"),err&&err.code==="declined"?"Download cancelado.":"Não foi possível salvar o PDF.","err")}
+    }else{
+      const url=URL.createObjectURL(blob),a=document.createElement("a");
+      a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),4000);
+      msg($("pdfmsg"),"PDF gerado.","ok");
+    }
+  });
+
+  /* ---------- início ---------- */
+  setNow();
+  (async()=>{
+    if(INSIDE_CLAUDE){
+      const db=await window.claude.use("db");
+      if(db){store=claudeStore(db);$("where").textContent="As medições ficam salvas na sua conta Claude.";store.start();return}
+      emptyRow("Entre na sua conta Claude para ver e salvar medições.");return;
+    }
+    store=localStore;
+    $("where").textContent="As medições ficam salvas neste aparelho e neste navegador. Exporte o PDF regularmente como cópia.";
+    store.start();
+  })();
+})();
+</script>
+</body>
+</html>
