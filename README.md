@@ -15,7 +15,8 @@ Depois de salvo, um registro não pode ser editado nem apagado pelo app. Os regi
 - **Autosave:** cada valor é guardado no momento em que é digitado.
 - **Backup de reserva:** cada gravação também vai para uma cópia separada no aparelho (localStorage e IndexedDB). Se a lista principal sumir, o app recupera da reserva ao abrir.
 - **Botão Salvar medição:** conclui a medição e limpa o formulário para a próxima. Até lá, tudo já fica guardado pelo autosave. Se a página recarregar no meio, o app volta para a medição em andamento. Uma medição esquecida aberta é salva sozinha depois de 30 minutos parada.
-- **Exportar PDF:** todos os registros ou um mês.
+- **Exportar PDF:** todos os registros, um mês ou um registro só (botão PDF em cada registro).
+- **Apagar:** cada registro tem um botão Apagar, com confirmação antes.
 
 ## Como usar
 

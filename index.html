@@ -73,6 +73,12 @@ h2{font-size:1.1rem;margin:0}
 .rec{display:flex;flex-direction:column;gap:6px}
 .rec+.rec{border-top:1px solid var(--line);padding-top:14px}
 .rec h4{margin:0;font-size:.95rem}
+.rechead{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.act{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.act span{font-size:.85rem}
+.sm{padding:6px 12px;font-size:.85rem;border-radius:8px}
+.danger{background:transparent;color:var(--err);border-color:var(--err)}
+.dangerfill{background:var(--err);color:var(--accent-fg)}
 .rec h4 span{color:var(--muted);font-weight:400}
 table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
 th{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:right;padding:4px 6px;border-bottom:1px solid var(--line)}
@@ -218,7 +224,7 @@ tr.sep td{border-top:1px solid var(--line)}
     ["e1","e2","e3"].forEach((id,i)=>pontos[id]={min:"",max:"",med:v(r.esquerdo[i])});
     ["d1","d2","d3"].forEach((id,i)=>pontos[id]={min:"",max:"",med:v(r.direito[i])});
     pontos.m={min:"",max:"",med:v(r.meio)};
-    return {id:"legado-"+(r.salvoEm||r.hora),data:r.data,hora:r.hora||"",pontos,salvoEm:r.salvoEm,legado:true,fechado:true};
+    return {id:"legado-"+(r._doc||r.salvoEm||r.hora),_doc:r._doc,_raw:r,data:r.data,hora:r.hora||"",pontos,salvoEm:r.salvoEm,legado:true,fechado:true};
   }
 
   /* ---------- reserva: cópia de tudo neste aparelho (localStorage + IndexedDB) ---------- */
@@ -248,11 +254,18 @@ tr.sep td{border-top:1px solid var(--line)}
       const i=all.findIndex(r=>r.id===rec.id);if(i>=0)all[i]=rec;else all.push(rec);
       localStorage.setItem(KEY,JSON.stringify(all));records=all.concat(this.legacy());render();
     },
+    async remove(rec){
+      if(rec.legado){
+        const v=JSON.parse(localStorage.getItem("decibeis-salao:medicoes")||"[]");
+        localStorage.setItem("decibeis-salao:medicoes",JSON.stringify(v.filter(x=>!(x.data===rec.data&&x.hora===rec.hora&&x.salvoEm===rec.salvoEm))));
+      }else localStorage.setItem(KEY,JSON.stringify(this.read().filter(r=>r.id!==rec.id)));
+      records=this.read().concat(this.legacy());render();
+    },
     async start(){
       let main=this.read();
       // se o principal sumiu, recupera da reserva
       const res=await reserva.all(),ids=new Set(main.map(r=>r.id));
-      const faltando=res.filter(r=>!ids.has(r.id));
+      const faltando=res.filter(r=>!r.apagado&&!ids.has(r.id));
       if(faltando.length){main=main.concat(faltando);try{localStorage.setItem(KEY,JSON.stringify(main))}catch(e){}}
       records=main.concat(this.legacy());render();resume();
     }
@@ -260,13 +273,17 @@ tr.sep td{border-top:1px solid var(--line)}
   function claudeStore(db){return {
     kind:"claude",
     async put(rec){await db.collection("registros").doc(rec.id).set(rec)},
+    async remove(rec){
+      if(rec.legado){if(rec._doc)await db.collection("medicoes").doc(rec._doc).delete()}
+      else await db.collection("registros").doc(rec.id).delete();
+    },
     start(){
       const timer=setTimeout(()=>emptyList("Não foi possível carregar. Verifique a conexão e abra a página de novo."),10000);
       let novos=[],antigos=[],first=true;
       const join=()=>{records=novos.concat(antigos);render();if(first){first=false;resume()}};
       db.collection("registros").onSnapshot(snap=>{clearTimeout(timer);novos=snap.docs.map(d=>Object.assign({},d.data(),{id:d.id})).filter(valid);join()},
         ()=>{clearTimeout(timer);emptyList("Erro ao carregar os registros. Recarregue a página.")});
-      db.collection("medicoes").onSnapshot(snap=>{antigos=snap.docs.map(d=>fromLegacy(d.data())).filter(Boolean);if(!first)join()},()=>{});
+      db.collection("medicoes").onSnapshot(snap=>{antigos=snap.docs.map(d=>fromLegacy(Object.assign({},d.data(),{_doc:d.id}))).filter(Boolean);if(!first)join()},()=>{});
     }
   }}
   function emptyList(t){$("list").textContent="";$("list").appendChild(el("p",{className:"empty",textContent:t}))}
@@ -370,9 +387,18 @@ tr.sep td{border-top:1px solid var(--line)}
       const list=$("list");list.textContent="";
       for(const r of records){
         const tag=r.legado?" · versão antiga, 1 valor por ponto (na coluna Média)":(r.fechado===false?" · em andamento":"");
+        const act=el("div",{className:"act"}),note=el("p",{className:"msg"});
+        const showButtons=()=>{act.textContent="";
+          const bp=el("button",{type:"button",className:"btn ghost sm",textContent:"PDF"});bp.setAttribute("aria-label","Exportar PDF do registro de "+fmtDate(r.data)+" às "+r.hora);
+          const ba=el("button",{type:"button",className:"btn danger sm",textContent:"Apagar"});ba.setAttribute("aria-label","Apagar o registro de "+fmtDate(r.data)+" às "+r.hora);
+          bp.onclick=()=>exportRecord(r,note);ba.onclick=showConfirm;act.append(bp,ba)};
+        const showConfirm=()=>{act.textContent="";
+          const yes=el("button",{type:"button",className:"btn dangerfill sm",textContent:"Sim, apagar"}),no=el("button",{type:"button",className:"btn ghost sm",textContent:"Cancelar"});
+          yes.onclick=()=>apagar(r,note,yes);no.onclick=showButtons;act.append(el("span",{textContent:"Apagar este registro?"}),yes,no);no.focus()};
+        showButtons();
         list.appendChild(el("div",{className:"rec"},[
-          el("h4",{},[document.createTextNode(fmtDate(r.data)+" "),el("span",{textContent:"às "+r.hora+tag})]),
-          recTable(r.pontos)]));
+          el("div",{className:"rechead"},[el("h4",{},[document.createTextNode(fmtDate(r.data)+" "),el("span",{textContent:"às "+r.hora+tag})]),act]),
+          recTable(r.pontos),note]));
       }
     }
     $("count").textContent=records.length?records.length+(records.length===1?" registro":" registros"):"";
@@ -425,6 +451,35 @@ tr.sep td{border-top:1px solid var(--line)}
     return doc.output("blob");
   }
 
+  async function baixar(blob,filename,out){
+    if(INSIDE_CLAUDE){
+      const dl=await window.claude.use("downloads");
+      if(!dl) return msg(out,"Esta visualização não permite baixar arquivos. Abra a página no claude.ai.","err");
+      try{await dl.save({filename,data:blob});msg(out,"PDF salvo.","ok")}
+      catch(err){msg(out,err&&err.code==="declined"?"Download cancelado.":"Não foi possível salvar o PDF.","err")}
+    }else{
+      const url=URL.createObjectURL(blob),a=document.createElement("a");
+      a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),4000);
+      msg(out,"PDF gerado.","ok");
+    }
+  }
+  async function exportRecord(r,out){
+    if(!window.jspdf) return msg(out,"O gerador de PDF não carregou. Recarregue a página.","err");
+    let blob;try{blob=buildPdf([r],"registro de "+fmtDate(r.data)+" às "+r.hora)}catch(e){return msg(out,"Não foi possível gerar o PDF.","err")}
+    await baixar(blob,"decibeis-salao-"+r.data+"-"+String(r.hora).replace(":","h")+".pdf",out);
+  }
+  async function apagar(r,out,btn){
+    btn.disabled=true;
+    try{
+      if(atual&&atual.id===r.id){clearTimeout(saveTimer);atual=null;try{localStorage.removeItem(KEY_ATUAL)}catch(e){};clearForm()}
+      await saving.catch(()=>{});
+      await store.remove(r);
+      if(!r.legado)reserva.put(Object.assign(JSON.parse(JSON.stringify(r)),{apagado:true,apagadoEm:new Date().toISOString()}));
+      records=records.filter(x=>x.id!==r.id);render();
+      msg($("msg"),"Registro de "+fmtDate(r.data)+" às "+r.hora+" apagado.","ok");
+    }catch(e){btn.disabled=false;msg(out,"Não foi possível apagar. Verifique a conexão e tente de novo.","err")}
+  }
   $("pdf").addEventListener("click",async()=>{
     if(atual){clearTimeout(saveTimer);persist()}
     const m=$("mes").value,list=m?records.filter(r=>r.data.startsWith(m)):records;
@@ -434,17 +489,7 @@ tr.sep td{border-top:1px solid var(--line)}
     const filename="decibeis-salao-"+(m||"todos")+".pdf";
     let blob;
     try{blob=buildPdf(list,periodo)}catch(e){return msg($("pdfmsg"),"Não foi possível gerar o PDF.","err")}
-    if(INSIDE_CLAUDE){
-      const dl=await window.claude.use("downloads");
-      if(!dl) return msg($("pdfmsg"),"Esta visualização não permite baixar arquivos. Abra a página no claude.ai.","err");
-      try{await dl.save({filename,data:blob});msg($("pdfmsg"),"PDF salvo.","ok")}
-      catch(err){msg($("pdfmsg"),err&&err.code==="declined"?"Download cancelado.":"Não foi possível salvar o PDF.","err")}
-    }else{
-      const url=URL.createObjectURL(blob),a=document.createElement("a");
-      a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();
-      setTimeout(()=>URL.revokeObjectURL(url),4000);
-      msg($("pdfmsg"),"PDF gerado.","ok");
-    }
+    await baixar(blob,filename,$("pdfmsg"));
   });
 
   /* ---------- início ---------- */
